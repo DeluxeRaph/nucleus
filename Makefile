@@ -14,7 +14,7 @@ setup: check-ollama install-deps pull-model
 	@echo "Setup complete! Run 'make run' to start."
 
 check-ollama:
-	@which ollama > /dev/null || (echo "Ollama not found. Install with: brew install ollama" && exit 1)
+	@which ollama > /dev/null || (echo "Ollama not found. Installing via Homebrew..." && brew install ollama)
 	@echo "Ollama found"
 	@pgrep -x ollama > /dev/null || (echo "🔧 Starting Ollama..." && ollama serve > /dev/null 2>&1 &)
 	@sleep 2
