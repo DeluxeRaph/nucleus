@@ -17,13 +17,13 @@
    LLM answers using YOUR actual code/docs as context
 ```
 
-## Setup Complete! ✅
+## Setup Complete!
 
 You now have:
-- ✅ Qwen 2.5 Coder 32B (main model)
-- ✅ Nomic Embed Text (embedding model)
-- ✅ ChromemGo vector database
-- ✅ Automatic retrieval on every query
+- Qwen 2.5 Coder 32B (main model)
+- Nomic Embed Text (embedding model)
+- ChromemGo vector database
+- Automatic retrieval on every query
 
 ## How to Use
 
@@ -90,17 +90,17 @@ rag:
 
 ```bash
 $ make run
-🤖 Local LLM with RAG Ready!
+Local LLM with RAG Ready!
 Model: qwen2.5-coder:32b
 Knowledge Base: 0 documents
 
 > /index /Users/cooksey/my-project
-📚 Indexing directory: /Users/cooksey/my-project
+Indexing directory: /Users/cooksey/my-project
 ✓ Indexed: main.go (3 chunks)
 ✓ Indexed: handlers.go (5 chunks)
 ✓ Indexed: README.md (2 chunks)
 
-✅ Indexed 3 files
+Indexed 3 files
 
 > How does the authentication handler work?
 
