@@ -14,11 +14,19 @@ impl Mode {
             Mode::AI => "[AI]",
         }
     }
+
+    fn colored_prompt(&self) -> String {
+        match self {
+            Mode::Terminal => format!("\x1b[0;32m{}\x1b[0m ", self.prefix()),
+            Mode::AI => format!("\x1b[0;35m{}\x1b[0m ", self.prefix()),
+        }
+    }
 }
 
 struct Session {
     mode: Mode,
     line_buffer: String,
+    input_buffer: String,
 }
 
 impl Session {
@@ -26,6 +34,7 @@ impl Session {
         Self {
             mode: Mode::Terminal,
             line_buffer: String::new(),
+            input_buffer: String::new(),
         }
     }
 
@@ -39,8 +48,8 @@ impl Session {
         // Send the prompt update to the shell
         // Configured for zsh
         let prompt_command = match self.mode {
-            Mode::Terminal => "export PS1='%F{green}[$]%f '",
-            Mode::AI => "export PS1='%F{magenta}[AI]%f '",
+            Mode::Terminal => format!("export PS1='%F{{green}}{}%f '", self.mode.prefix()),
+            Mode::AI => format!("export PS1='%F{{magenta}}{}%f '", self.mode.prefix()),
         };
 
         // Send command + newline to execute it
@@ -54,8 +63,7 @@ impl Session {
     }
 }
 
-const CTRL_I: u8 = 9;
-// const CMD_I: u8 = 25;
+const CTRL_SLASH: u8 = 31;  // Ctrl-/ to toggle modes
 
 pub fn run_io_loop(master: &mut Box<dyn portable_pty::MasterPty + Send>) -> Result<()> {
     use std::io::{stdin, stdout};
@@ -76,7 +84,7 @@ pub fn run_io_loop(master: &mut Box<dyn portable_pty::MasterPty + Send>) -> Resu
         match stdin.read(&mut stdin_buf) {
             Ok(0) => break,
             Ok(n) => {
-                if n == 1 && stdin_buf[0] == CTRL_I {
+                if n == 1 && stdin_buf[0] == CTRL_SLASH {
                     session.toggle_mode();
                     session.show_mode_indicator(&mut writer)?;
                     continue;
@@ -85,14 +93,19 @@ pub fn run_io_loop(master: &mut Box<dyn portable_pty::MasterPty + Send>) -> Resu
                 let input = String::from_utf8_lossy(&stdin_buf[..n]);
 
                 for ch in input.chars() {
-                    session.line_buffer.push(ch);
-
                     if ch == '\n' || ch == '\r' {
+                        session.line_buffer.push(ch);
                         let line = session.line_buffer.trim_end();
 
                         let cmd_text = match session.mode {
                             Mode::AI => {
-                                if line.starts_with('/') {
+                                if line == "/exit" || line == "/quit" {
+                                    session.toggle_mode();
+                                    session.show_mode_indicator(&mut writer)?;
+                                    session.line_buffer.clear();
+                                    session.input_buffer.clear();
+                                    continue;
+                                } else if line.starts_with('/') {
                                     line.to_string()
                                 } else {
                                     format!("/ai {}", line)
@@ -124,9 +137,17 @@ pub fn run_io_loop(master: &mut Box<dyn portable_pty::MasterPty + Send>) -> Resu
                                     }
                                 }
                                 stdout.flush()?;
+
+                                // Show a new prompt after command execution
+                                if matches!(session.mode, Mode::AI) {
+                                    let prompt = session.mode.colored_prompt();
+                                    stdout.write_all(prompt.as_bytes())?;
+                                    stdout.flush()?;
+                                }
                             }
                         }
                         session.line_buffer.clear();
+                        session.input_buffer.clear();
                     } else {
                         match session.mode {
                             Mode::Terminal => {
@@ -134,9 +155,22 @@ pub fn run_io_loop(master: &mut Box<dyn portable_pty::MasterPty + Send>) -> Resu
                                 writer.flush()?;
                             }
                             Mode::AI => {
-                                // In AI mode, echo the character to stdout for visual feedback
-                                stdout.write_all(&[ch as u8])?;
-                                stdout.flush()?;
+                                // Handle backspace/delete in AI mode
+                                if ch == '\x7f' || ch == '\x08' {
+                                    if !session.input_buffer.is_empty() {
+                                        session.input_buffer.pop();
+                                        session.line_buffer.pop();
+                                        // Move back, overwrite with space, move back again
+                                        stdout.write_all(b"\x08 \x08")?;
+                                        stdout.flush()?;
+                                    }
+                                } else {
+                                    // In AI mode, echo the character to stdout for visual feedback
+                                    session.input_buffer.push(ch);
+                                    session.line_buffer.push(ch);
+                                    stdout.write_all(&[ch as u8])?;
+                                    stdout.flush()?;
+                                }
                             }
                         }
                     }
