@@ -26,14 +26,14 @@ impl Command {
         }
     }
     
-    pub fn execute(&self) -> Result<Option<String>> {
+    pub fn execute(&self, pwd: Option<&str>) -> Result<Option<String>> {
         match self {
             Command::AiChat(query) => {
-                let response = AiClient::chat(query)?;
+                let response = AiClient::chat(query, pwd)?;
                 Ok(Some(response))
             }
             Command::AiEdit(request) => {
-                let response = AiClient::edit(request)?;
+                let response = AiClient::edit(request, pwd)?;
                 Ok(Some(response))
             }
             Command::AiStats => {

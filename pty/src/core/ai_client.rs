@@ -10,6 +10,7 @@ const SOCKET_PATH: &str = "/tmp/llm-workspace.sock";
 struct Request {
     r#type: String,
     content: String,
+    pwd: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -22,7 +23,7 @@ struct Response {
 pub struct AiClient;
 
 impl AiClient {
-    pub fn send_request(request_type: &str, content: &str) -> Result<String> {
+    pub fn send_request(request_type: &str, content: &str, pwd: Option<&str>) -> Result<String> {
         let mut stream = UnixStream::connect(SOCKET_PATH)
             .context("Failed to connect to AI server. Is it running?")?;
 
@@ -32,6 +33,7 @@ impl AiClient {
         let request = Request {
             r#type: request_type.to_string(),
             content: content.to_string(),
+            pwd: pwd.map(|s| s.to_string()),
         };
 
         let json = serde_json::to_string(&request)?;
@@ -56,23 +58,23 @@ impl AiClient {
         }
     }
 
-    pub fn chat(query: &str) -> Result<String> {
-        Self::send_request("chat", query)
+    pub fn chat(query: &str, pwd: Option<&str>) -> Result<String> {
+        Self::send_request("chat", query, pwd)
     }
 
-    pub fn edit(request: &str) -> Result<String> {
-        Self::send_request("edit", request)
+    pub fn edit(request: &str, pwd: Option<&str>) -> Result<String> {
+        Self::send_request("edit", request, pwd)
     }
 
     pub fn add_knowledge(content: &str) -> Result<String> {
-        Self::send_request("add", content)
+        Self::send_request("add", content, None)
     }
 
     pub fn index_directory(path: &str) -> Result<String> {
-        Self::send_request("index", path)
+        Self::send_request("index", path, None)
     }
 
     pub fn stats() -> Result<String> {
-        Self::send_request("stats", "")
+        Self::send_request("stats", "", None)
     }
 }

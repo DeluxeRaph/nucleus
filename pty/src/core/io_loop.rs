@@ -70,6 +70,10 @@ pub fn run_io_loop(master: &mut Box<dyn portable_pty::MasterPty + Send>) -> Resu
 
     let mut stdin = stdin();
     let mut stdout = stdout();
+    
+    let pwd = std::env::current_dir()
+        .ok()
+        .and_then(|p| p.to_str().map(String::from));
 
     let mut reader = master.try_clone_reader()?;
     let mut writer = master.take_writer()?;
@@ -125,7 +129,7 @@ pub fn run_io_loop(master: &mut Box<dyn portable_pty::MasterPty + Send>) -> Resu
                                 stdout.write_all(b"\r\n")?;
                                 stdout.flush()?;
 
-                                match cmd.execute() {
+                                match cmd.execute(pwd.as_deref()) {
                                     Ok(Some(response)) => {
                                         // Process response to ensure proper line breaks
                                         for line in response.lines() {
