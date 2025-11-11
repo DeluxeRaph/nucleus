@@ -69,7 +69,6 @@ pub fn run_io_loop(master: &mut Box<dyn portable_pty::MasterPty + Send>) -> Resu
     let mut stdin_buf = [0u8; 4096];
     let mut pty_buf = [0u8; 4096];
     let mut session = Session::new();
-    session.show_mode_indicator(&mut writer)?;
 
     loop {
         match stdin.read(&mut stdin_buf) {
@@ -77,6 +76,7 @@ pub fn run_io_loop(master: &mut Box<dyn portable_pty::MasterPty + Send>) -> Resu
             Ok(n) => {
                 if n == 1 && stdin_buf[0] == CTRL_I {
                     session.toggle_mode();
+                    session.show_mode_indicator(&mut writer)?;
                     continue;
                 }
 
