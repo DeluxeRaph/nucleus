@@ -127,8 +127,11 @@ pub fn run_io_loop(master: &mut Box<dyn portable_pty::MasterPty + Send>) -> Resu
 
                                 match cmd.execute() {
                                     Ok(Some(response)) => {
-                                        stdout.write_all(response.as_bytes())?;
-                                        stdout.write_all(b"\r\n")?;
+                                        // Process response to ensure proper line breaks
+                                        for line in response.lines() {
+                                            stdout.write_all(line.as_bytes())?;
+                                            stdout.write_all(b"\r\n")?;
+                                        }
                                     }
                                     Ok(None) => {}
                                     Err(e) => {
