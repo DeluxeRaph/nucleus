@@ -6,7 +6,7 @@ use std::os::fd::AsRawFd;
 
 use core::run_io_loop;
 use portable_pty::{native_pty_system, CommandBuilder};
-use utils::{get_terminal_size, set_raw_mode, RestoreTermios};
+use utils::{get_terminal_size, set_nonblocking, set_raw_mode, RestoreTermios};
 
 fn main() -> Result<()> {
     // Access user shell
@@ -30,6 +30,8 @@ fn main() -> Result<()> {
 
     let stdin_fd = std::io::stdin().as_raw_fd();
     let original_termios = set_raw_mode(stdin_fd)?;
+    set_nonblocking(stdin_fd)?;
+    set_nonblocking(master.as_raw_fd().expect("Failed to unwrap Master"))?;
 
     // Restore terminal on exit
     let _guard = RestoreTermios {

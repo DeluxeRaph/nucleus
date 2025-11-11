@@ -46,7 +46,6 @@ pub struct RestoreTermios {
     pub termios: nix::sys::termios::Termios,
 }
 
-#[allow(dead_code)]
 pub fn set_nonblocking(fd: RawFd) -> anyhow::Result<()> {
     use nix::fcntl::{fcntl, FcntlArg};
     use std::os::fd::BorrowedFd;
