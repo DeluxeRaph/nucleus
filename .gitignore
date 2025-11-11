@@ -1,19 +1,36 @@
-# Binaries
-llm-app
-*.exe
-*.dll
-*.so
-*.dylib
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
 
 # Go
 *.test
 *.out
 go.work
+go.work.sum
+vendor/
+
+# Binaries
+llm-app
+llm-server
+*.exe
+*.dll
+*.so
+*.dylib
 
 # Data
 data/
 *.db
 *.sqlite
+*.log
+
+# Config (sensitive)
+config/secrets.yaml
+config/local.yaml
+*.env
+.env.local
+.env.*.local
 
 # IDE
 .vscode/
@@ -21,7 +38,29 @@ data/
 *.swp
 *.swo
 *~
+*.iml
 
 # OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+
+# Build artifacts
+*.o
+*.a
+*.lib
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Temporary files
+*.tmp
+*.temp
+*.bak

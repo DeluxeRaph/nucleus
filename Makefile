@@ -1,76 +1,45 @@
-.PHONY: help setup install-deps pull-model pull-embedding-model pull-all-models run build clean clean-all clean-data test
+.PHONY: all build clean run install help
 
-help:
-	@echo "Available commands:"
-	@echo "  make setup               - Complete first-time setup"
-	@echo "  make install-deps        - Install Go dependencies"
-	@echo "  make pull-model          - Pull the LLM model from config.yaml"
-	@echo "  make pull-embedding-model - Pull the embedding model from config.yaml"
-	@echo "  make pull-all-models     - Pull both LLM and embedding models"
-	@echo "  make run                 - Run the application"
-	@echo "  make build               - Build binary"
-	@echo "  make clean               - Remove built files only (SAFE - keeps your data)"
-	@echo "  make clean-data          - Remove vector DB and chat history (DESTRUCTIVE)"
-	@echo "  make clean-all           - Remove everything including data (DESTRUCTIVE)"
-	@echo "  make test                - Run tests"
+BINARY_NAME=llm-workspace
+AI_SERVER=llm-server
+PTY_DIR=pty
+AI_DIR=ai
 
-setup: check-ollama install-deps pull-all-models
-	@echo "Setup complete! Run 'make run' to start."
+all: build
 
-check-ollama:
-	@which ollama > /dev/null || (echo "Ollama not found. Installing via Homebrew..." && brew install ollama)
-	@echo "Ollama found"
-	@pgrep -x ollama > /dev/null || (echo "🔧 Starting Ollama..." && ollama serve > /dev/null 2>&1 &)
-	@sleep 2
+build: build-ai build-pty
 
-install-deps:
-	@echo "Installing Go dependencies..."
-	@test -f go.mod || go mod init llm-workspace
-	@go get github.com/ollama/ollama/api
-	@go get github.com/philippgille/chromem-go
-	@go get gopkg.in/yaml.v3
-	@go mod tidy
-	@echo "Dependencies installed"
+build-ai:
+	@echo "Building AI server..."
+	cd $(AI_DIR) && go build -o ../$(AI_SERVER) ./server.go
 
-pull-model:
-	@echo "Reading model from config.yaml..."
-	@MODEL=$$(grep 'model:' config.yaml | head -1 | awk '{print $$2}' | tr -d '"'); \
-	echo "Pulling LLM model: $$MODEL..."; \
-	ollama pull $$MODEL
-	@echo "LLM model ready"
-
-pull-embedding-model:
-	@echo "Reading embedding model from config.yaml..."
-	@EMBED_MODEL=$$(grep 'embedding_model:' config.yaml | awk '{print $$2}' | tr -d '"'); \
-	echo "Pulling embedding model: $$EMBED_MODEL..."; \
-	ollama pull $$EMBED_MODEL
-	@echo "Embedding model ready"
-
-pull-all-models: pull-model pull-embedding-model
-	@echo "All models ready"
-
-run:
-	@go run main.go
-
-build:
-	@echo "Building binary..."
-	@go build -o llm-app main.go
-	@echo "Built: ./llm-app"
+build-pty:
+	@echo "Building PTY..."
+	cd $(PTY_DIR) && cargo build --release
+	@cp target/release/pty ./$(BINARY_NAME)
 
 clean:
-	@echo "Removing built files..."
-	@rm -f llm-app
-	@echo "Clean complete (data preserved)"
+	@echo "Cleaning..."
+	rm -f $(AI_SERVER) $(BINARY_NAME)
+	cd $(PTY_DIR) && cargo clean
+	cd $(AI_DIR) && go clean
 
-clean-data:
-	@echo "⚠️  WARNING: This will delete your vector database and chat history!"
-	@echo "Press Ctrl+C to cancel, or wait 5 seconds to continue..."
-	@sleep 5
-	@rm -rf data/
-	@echo "Data deleted"
+run: build
+	@./$(BINARY_NAME)
 
-clean-all: clean clean-data
-	@echo "Everything cleaned"
+install: build
+	@echo "Installing to /usr/local/bin..."
+	@cp $(BINARY_NAME) /usr/local/bin/
+	@cp $(AI_SERVER) /usr/local/bin/
+	@echo "Done! You can now run '$(BINARY_NAME)' from anywhere"
 
-test:
-	@go test ./...
+dev: build-ai
+	cd $(PTY_DIR) && cargo run
+
+help:
+	@echo "Available targets:"
+	@echo "  make build    - Build both AI server and PTY"
+	@echo "  make clean    - Clean build artifacts"
+	@echo "  make run      - Build and run"
+	@echo "  make dev      - Quick development build (debug mode)"
+	@echo "  make install  - Install to /usr/local/bin"
