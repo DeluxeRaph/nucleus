@@ -1,7 +1,6 @@
-package main
+package server
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -19,7 +18,7 @@ import (
 	"github.com/ollama/ollama/api"
 )
 
-const socketPath = "/tmp/llm-workspace.sock"
+const SocketPath = "/tmp/llm-workspace.sock"
 
 type Request struct {
 	Type    string `json:"type"`
@@ -40,7 +39,7 @@ type Server struct {
 	ctx         context.Context
 }
 
-func NewServer() (*Server, error) {
+func New() (*Server, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
@@ -129,21 +128,21 @@ func (s *Server) handleConnection(conn net.Conn) {
 }
 
 func (s *Server) Start() error {
-	if err := os.RemoveAll(socketPath); err != nil {
+	if err := os.RemoveAll(SocketPath); err != nil {
 		return fmt.Errorf("failed to remove old socket: %w", err)
 	}
 
-	listener, err := net.Listen("unix", socketPath)
+	listener, err := net.Listen("unix", SocketPath)
 	if err != nil {
 		return fmt.Errorf("failed to create socket: %w", err)
 	}
 	defer listener.Close()
 
-	if err := os.Chmod(socketPath, 0600); err != nil {
+	if err := os.Chmod(SocketPath, 0600); err != nil {
 		return fmt.Errorf("failed to set socket permissions: %w", err)
 	}
 
-	log.Printf("AI Server listening on %s", socketPath)
+	log.Printf("AI Server listening on %s", SocketPath)
 	log.Printf("Model: %s", s.cfg.LLM.Model)
 	log.Printf("Knowledge Base: %d documents", s.ragManager.Count())
 
@@ -154,7 +153,7 @@ func (s *Server) Start() error {
 		<-sigChan
 		log.Println("Shutting down...")
 		listener.Close()
-		os.RemoveAll(socketPath)
+		os.RemoveAll(SocketPath)
 		os.Exit(0)
 	}()
 
@@ -172,128 +171,4 @@ func (s *Server) Start() error {
 	}
 
 	return nil
-}
-
-func runInteractive() error {
-	cfg, err := config.Load()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-
-	client, err := api.ClientFromEnvironment()
-	if err != nil {
-		return fmt.Errorf("failed to create Ollama client: %w", err)
-	}
-
-	ragManager, err := rag.NewManager(cfg, client)
-	if err != nil {
-		return fmt.Errorf("failed to initialize RAG: %w", err)
-	}
-
-	fileManager := fileops.NewManager(cfg, client, ragManager)
-
-	fmt.Println("Local LLM with RAG Ready!")
-	fmt.Printf("Model: %s\n", cfg.LLM.Model)
-	fmt.Printf("Knowledge Base: %d documents\n", ragManager.Count())
-	fmt.Println("\nCommands:")
-	fmt.Println("  /add <text>       - Add knowledge to vector DB")
-	fmt.Println("  /index <path>     - Index a directory (code files)")
-	fmt.Println("  /edit <request>   - Enable file editing mode")
-	fmt.Println("  /stats            - Show knowledge base stats")
-	fmt.Println("  /quit             - Exit")
-	fmt.Println("\nType your message:")
-
-	scanner := bufio.NewScanner(os.Stdin)
-	ctx := context.Background()
-
-	for {
-		fmt.Print("\n> ")
-		if !scanner.Scan() {
-			break
-		}
-
-		input := strings.TrimSpace(scanner.Text())
-		if input == "" {
-			continue
-		}
-
-		if input == "/quit" {
-			fmt.Println("Goodbye!")
-			break
-		}
-
-		if input == "/stats" {
-			fmt.Printf("Knowledge base contains %d documents\n", ragManager.Count())
-			continue
-		}
-
-		if strings.HasPrefix(input, "/add ") {
-			content := strings.TrimPrefix(input, "/add ")
-			err := ragManager.AddKnowledge(ctx, content, "user_input")
-			if err != nil {
-				fmt.Printf("Error adding knowledge: %v\n", err)
-			} else {
-				fmt.Println("Added to knowledge base")
-			}
-			continue
-		}
-
-		if strings.HasPrefix(input, "/index ") {
-			dirPath := strings.TrimPrefix(input, "/index ")
-			fmt.Printf("Indexing directory: %s\n", dirPath)
-			err := ragManager.IndexDirectory(ctx, dirPath)
-			if err != nil {
-				fmt.Printf("Error indexing: %v\n", err)
-			}
-			continue
-		}
-
-		if strings.HasPrefix(input, "/edit ") {
-			request := strings.TrimPrefix(input, "/edit ")
-			response, err := fileManager.ChatWithTools(ctx, request)
-			if err != nil {
-				fmt.Printf("Error: %v\n", err)
-			} else if response != "" {
-				fmt.Printf("\n%s\n", response)
-			}
-			continue
-		}
-
-		response, err := fileManager.Chat(ctx, input)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			continue
-		}
-
-		fmt.Printf("\n%s\n", response)
-	}
-
-	return nil
-}
-
-func main() {
-	if len(os.Args) > 1 && os.Args[1] == "interactive" {
-		if err := runInteractive(); err != nil {
-			log.Fatal(err)
-		}
-		return
-	}
-
-	pidFile := "/tmp/llm-workspace.pid"
-	pid := fmt.Sprintf("%d", os.Getpid())
-	if err := os.WriteFile(pidFile, []byte(pid), 0644); err != nil {
-		log.Printf("Warning: could not write PID file: %v", err)
-	}
-	defer os.Remove(pidFile)
-
-	server, err := NewServer()
-	if err != nil {
-		os.Remove(pidFile)
-		log.Fatal(err)
-	}
-
-	if err := server.Start(); err != nil {
-		os.Remove(pidFile)
-		log.Fatal(err)
-	}
 }
