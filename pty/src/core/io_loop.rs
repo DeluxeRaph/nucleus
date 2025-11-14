@@ -1,3 +1,4 @@
+use super::ai_client::ConversationHistory;
 use super::command::Command;
 use super::input_handler::{InputAction, InputHandler, Mode};
 use super::output_handler::OutputHandler;
@@ -19,6 +20,7 @@ pub fn run_io_loop(master: &mut Box<dyn portable_pty::MasterPty + Send>) -> Resu
 
     let mut input_handler = InputHandler::new();
     let mut output_handler = OutputHandler::new(Box::new(std::io::stdout()));
+    let mut conversation_history = ConversationHistory::new();
 
     let mut stdin_buf = vec![0u8; 8192];
     let mut pty_buf = vec![0u8; 262144];
@@ -56,7 +58,7 @@ pub fn run_io_loop(master: &mut Box<dyn portable_pty::MasterPty + Send>) -> Resu
                                 _ => {
                                     output_handler.render_newline()?;
 
-                                    match cmd.execute(pwd.as_deref()) {
+                                    match cmd.execute(pwd.as_deref(), Some(&mut conversation_history)) {
                                         Ok(Some(response)) => {
                                             output_handler.render_command_response(&response)?;
                                         }

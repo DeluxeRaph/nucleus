@@ -76,11 +76,11 @@ type StreamCallback func(chunk string)
 // Sends a message with file read/write tools enabled.
 // The LLM can request to read or modify files as needed.
 func (m *Manager) ChatWithTools(ctx context.Context, userMessage string) (string, error) {
-	return m.ChatWithToolsStream(ctx, userMessage, nil)
+	return m.ChatWithToolsStream(ctx, userMessage, nil, nil)
 }
 
 // ChatWithToolsStream allows streaming responses via callback
-func (m *Manager) ChatWithToolsStream(ctx context.Context, userMessage string, streamCallback StreamCallback) (string, error) {
+func (m *Manager) ChatWithToolsStream(ctx context.Context, userMessage string, history []api.Message, streamCallback StreamCallback) (string, error) {
 	relevantContext, err := m.ragManager.RetrieveContext(ctx, userMessage)
 	if err != nil {
 		log.Printf("Warning: retrieval failed: %v", err)
@@ -144,11 +144,22 @@ You: <tool_call>
 			Role:    "system",
 			Content: systemPrompt,
 		},
-		{
-			Role:    "user",
-			Content: userMessageWithContext,
-		},
 	}
+	
+	// Append conversation history if provided
+	log.Printf("[DEBUG] Received %d history messages", len(history))
+	if len(history) > 0 {
+		for i, msg := range history {
+			log.Printf("[DEBUG] History[%d]: %s: %s", i, msg.Role, msg.Content[:min(50, len(msg.Content))])
+		}
+		messages = append(messages, history...)
+	}
+	
+	// Append current user message
+	messages = append(messages, api.Message{
+		Role:    "user",
+		Content: userMessageWithContext,
+	})
 
 	for {
 		req := &api.ChatRequest{
