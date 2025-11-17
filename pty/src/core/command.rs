@@ -15,30 +15,42 @@ pub enum Command {
 impl Command {
     pub fn parse(line: &str) -> Self {
         let trimmed = line.trim();
-        
+
         let parts: Vec<&str> = trimmed.splitn(2, ' ').collect();
-        
-        match parts.as_slice() {
-            ["/ai", rest] => Command::AiChat(rest.to_string()),
-            ["/edit", rest] => Command::AiEdit(rest.to_string()),
-            ["/add", rest] => Command::AiAdd(rest.to_string()),
-            ["/index", rest] => Command::AiIndex(rest.to_string()),
-            ["/stats"] => Command::AiStats,
-            ["/clear"] => Command::ClearHistory,
-            ["/exit"] | ["/quit"] => Command::Exit,
+        let rest = parts.get(1).unwrap_or(&"").trim().to_string();
+
+        // The available commands live here
+        match parts.first().map(|s| *s) {
+            Some("/ai") => Command::AiChat(rest),
+            Some("/edit") => Command::AiEdit(rest),
+            Some("/add") => Command::AiAdd(rest),
+            Some("/index") => Command::AiIndex(rest),
+            Some("/stats") => Command::AiStats,
+            Some("/clear") => Command::ClearHistory,
+            Some("/exit") | Some("/quit") => Command::Exit,
             _ => Command::PassThrough,
         }
     }
-    
-    pub fn execute(&self, pwd: Option<&str>, history: Option<&mut ConversationHistory>) -> Result<Option<String>> {
+
+    pub fn execute(
+        &self,
+        pwd: Option<&str>,
+        history: Option<&mut ConversationHistory>,
+    ) -> Result<Option<String>> {
         match self {
             Command::AiChat(query) => {
                 let response = AiClient::chat(query, pwd, history.as_ref().map(|h| &**h))?;
                 if let Some(hist) = history {
-                    eprintln!("[DEBUG] Before adding to history: {} messages", hist.get_messages().len());
+                    eprintln!(
+                        "[DEBUG] Before adding to history: {} messages",
+                        hist.get_messages().len()
+                    );
                     hist.add_user_message(query.clone());
                     hist.add_assistant_message(response.clone());
-                    eprintln!("[DEBUG] After adding to history: {} messages", hist.get_messages().len());
+                    eprintln!(
+                        "[DEBUG] After adding to history: {} messages",
+                        hist.get_messages().len()
+                    );
                 }
                 Ok(Some(response))
             }
