@@ -1,4 +1,4 @@
-use super::types::{Request, StreamChunk};
+use super::types::{Request, RequestType, StreamChunk};
 use crate::{config::Config, ollama};
 use tokio::sync::mpsc;
 
@@ -20,14 +20,13 @@ impl RequestHandler {
     
     /// Routes request to appropriate handler based on type.
     pub async fn handle(&self, request: Request, sender: ChunkSender) {
-        match request.request_type.as_str() {
-            "chat" | "edit" => self.handle_chat(request, sender).await,
-            "add" => self.handle_add(request, sender).await,
-            "index" => self.handle_index(request, sender).await,
-            "stats" => self.handle_stats(sender).await,
-            _ => {
-                let _ = sender.send(StreamChunk::error("Unknown request type"));
+        match request.request_type {
+            RequestType::Chat | RequestType::Edit => {
+                self.handle_chat(request, sender).await
             }
+            RequestType::Add => self.handle_add(request, sender).await,
+            RequestType::Index => self.handle_index(request, sender).await,
+            RequestType::Stats => self.handle_stats(sender).await,
         }
     }
     

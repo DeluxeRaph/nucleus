@@ -11,7 +11,7 @@ mod types;
 
 // Re-export types for external use
 #[allow(unused)]
-pub use types::{Message, Request, StreamChunk};
+pub use types::{ChunkType, Message, Request, RequestType, StreamChunk};
 
 use crate::{config::Config, ollama};
 use std::sync::Arc;
