@@ -22,8 +22,17 @@ fn main() -> Result<()> {
     let terminal_size = get_terminal_size();
     let pair = pty_system.openpty(terminal_size)?;
 
-    // Spawn shell
-    let cmd = CommandBuilder::new(shell);
+    let mut cmd = CommandBuilder::new(&shell);
+    cmd.arg("-i");
+    
+    // Set flag to indicate we're in the PTY wrapper
+    cmd.env("PTY_WRAPPER", "1");
+    
+    // Inherit all environment variables from parent process
+    for (key, value) in std::env::vars() {
+        cmd.env(key, value);
+    }
+
     let _child = pair.slave.spawn_command(cmd).unwrap();
 
     // Slave isn't needed, so it can be dropped
