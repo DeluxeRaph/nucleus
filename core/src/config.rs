@@ -32,8 +32,11 @@ pub struct Config {
 /// However, if false, the functionality will not exist to begin with.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Permission {
+    /// Read directories and files
     pub read: bool,
+    /// Write to files
     pub write: bool,
+    /// Run system commands
     pub command: bool,
 }
 
@@ -47,6 +50,7 @@ impl Default for Permission {
     }
 }
 
+/// Configuration for the AI model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
     pub model: String,
@@ -62,7 +66,18 @@ pub struct RagConfig {
     pub chunk_overlap: usize,
     pub top_k: usize,
 }
+impl Default for RagConfig {
+    fn default() -> Self {
+        Self {
+            embedding_model: "nomic-embed-text".to_string(),
+            chunk_size: 512,
+            chunk_overlap: 50,
+            top_k: 5,
+        }
+    }
+}
 
+/// Vector database for RAG system
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageConfig {
     pub vector_db_path: String,
@@ -75,6 +90,15 @@ pub struct PersonalizationConfig {
     pub save_conversations: bool,
     pub user_preferences_path: String,
 }
+impl Default for PersonalizationConfig {
+    fn default() -> Self {
+        Self {
+            learn_from_interactions: true,
+            save_conversations: true,
+            user_preferences_path: "./data/preferences.json".to_string(),
+        }
+    }
+}
 
 impl Config {
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
@@ -82,6 +106,8 @@ impl Config {
         let mut config: Config = serde_yaml::from_str(&contents)?;
 
         config.permission = Permission::default();
+        config.rag = RagConfig::default();
+        config.personalization = PersonalizationConfig::default();
 
         Ok(config)
     }
