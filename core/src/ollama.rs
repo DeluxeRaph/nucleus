@@ -1,8 +1,14 @@
+//! Ollama HTTP API client for chat completions.
+//!
+//! This module provides a Rust interface to the Ollama API, supporting
+//! streaming chat completions with the local or remote Ollama server.
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
 use futures::StreamExt;
 
+/// Errors that can occur when interacting with the Ollama API.
 #[derive(Debug, Error)]
 pub enum OllamaError {
     #[error("HTTP request failed: {0}")]
@@ -17,13 +23,16 @@ pub enum OllamaError {
 
 pub type Result<T> = std::result::Result<T, OllamaError>;
 
+/// HTTP client for communicating with an Ollama server.
 #[derive(Debug, Clone)]
 pub struct Client {
+    /// The base URL of the Ollama server (e.g., "http://localhost:11434")
     base_url: String,
     http_client: reqwest::Client,
 }
 
 impl Client {
+    /// Creates a new Ollama client with the specified base URL.
     pub fn new(base_url: impl Into<String>) -> Self {
         Self {
             base_url: base_url.into(),
@@ -31,6 +40,28 @@ impl Client {
         }
     }
     
+    /// Sends a chat request to Ollama and streams the response.
+    ///
+    /// The response is streamed in chunks, with each chunk being passed to the callback
+    /// function as it arrives. This allows for real-time display of the LLM's output.
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - The chat request containing the model and messages
+    /// * `callback` - Function called for each response chunk received
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP request fails, the response cannot be parsed,
+    /// or the Ollama API returns an error.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// client.chat(request, |response| {
+    ///     print!("{}", response.message.content);
+    /// }).await?;
+    /// ```
     pub async fn chat(
         &self,
         request: ChatRequest,
@@ -75,6 +106,9 @@ impl Client {
     }
 }
 
+/// A single message in a chat conversation.
+///
+/// Messages have a role (system, user, or assistant) and content.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub role: String,
@@ -82,6 +116,9 @@ pub struct Message {
 }
 
 impl Message {
+    /// Creates a system message.
+    ///
+    /// System messages set the behavior and context for the AI assistant.
     pub fn system(content: impl Into<String>) -> Self {
         Self {
             role: "system".to_string(),
@@ -89,6 +126,9 @@ impl Message {
         }
     }
     
+    /// Creates a user message.
+    ///
+    /// User messages represent input from the person interacting with the AI.
     pub fn user(content: impl Into<String>) -> Self {
         Self {
             role: "user".to_string(),
@@ -97,6 +137,9 @@ impl Message {
     }
 }
 
+/// Request payload for the Ollama chat API.
+///
+/// Specifies the model to use, conversation history, and generation options.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatRequest {
     pub model: String,
@@ -114,6 +157,12 @@ fn default_stream() -> bool {
 }
 
 impl ChatRequest {
+    /// Creates a new chat request.
+    ///
+    /// # Arguments
+    ///
+    /// * `model` - The model identifier (e.g., "llama2", "mistral")
+    /// * `messages` - Conversation history including system, user, and assistant messages
     pub fn new(model: impl Into<String>, messages: Vec<Message>) -> Self {
         Self {
             model: model.into(),
@@ -123,6 +172,11 @@ impl ChatRequest {
         }
     }
     
+    /// Sets the temperature parameter for response generation.
+    ///
+    /// Temperature controls randomness in the output. Higher values (e.g., 0.8)
+    /// produce more creative responses, while lower values (e.g., 0.2) are more
+    /// deterministic and focused.
     pub fn with_temperature(mut self, temperature: f64) -> Self {
         let mut options = self.options.unwrap_or_default();
         options.insert("temperature".to_string(), serde_json::json!(temperature));
@@ -131,6 +185,10 @@ impl ChatRequest {
     }
 }
 
+/// Response from the Ollama chat API.
+///
+/// Responses are streamed, with multiple response objects sent for a single request.
+/// The `done` field indicates when the response is complete.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatResponse {
     pub model: String,
