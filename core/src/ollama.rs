@@ -1,0 +1,173 @@
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use thiserror::Error;
+use futures::StreamExt;
+
+#[derive(Debug, Error)]
+pub enum OllamaError {
+    #[error("HTTP request failed: {0}")]
+    Request(#[from] reqwest::Error),
+    
+    #[error("JSON parsing failed: {0}")]
+    Json(#[from] serde_json::Error),
+    
+    #[error("API error: {0}")]
+    Api(String),
+}
+
+pub type Result<T> = std::result::Result<T, OllamaError>;
+
+#[derive(Debug, Clone)]
+pub struct Client {
+    base_url: String,
+    http_client: reqwest::Client,
+}
+
+impl Client {
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into(),
+            http_client: reqwest::Client::new(),
+        }
+    }
+    
+    pub async fn chat(
+        &self,
+        request: ChatRequest,
+        mut callback: impl FnMut(ChatResponse),
+    ) -> Result<()> {
+        let url = format!("{}/api/chat", self.base_url);
+        
+        let response = self.http_client
+            .post(&url)
+            .json(&request)
+            .send()
+            .await?;
+        
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            return Err(OllamaError::Api(error_text));
+        }
+        
+        let mut stream = response.bytes_stream();
+        let mut buffer = Vec::new();
+        
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result?;
+            buffer.extend_from_slice(&chunk);
+            
+            while let Some(newline_pos) = buffer.iter().position(|&b| b == b'\n') {
+                let line = buffer.drain(..=newline_pos).collect::<Vec<_>>();
+                
+                if line.len() <= 1 {
+                    continue;
+                }
+                
+                let line_str = String::from_utf8_lossy(&line[..line.len()-1]);
+                
+                if let Ok(chat_response) = serde_json::from_str::<ChatResponse>(&line_str) {
+                    callback(chat_response);
+                }
+            }
+        }
+        
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Message {
+    pub role: String,
+    pub content: String,
+}
+
+impl Message {
+    pub fn system(content: impl Into<String>) -> Self {
+        Self {
+            role: "system".to_string(),
+            content: content.into(),
+        }
+    }
+    
+    pub fn user(content: impl Into<String>) -> Self {
+        Self {
+            role: "user".to_string(),
+            content: content.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatRequest {
+    pub model: String,
+    pub messages: Vec<Message>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<HashMap<String, serde_json::Value>>,
+    
+    #[serde(default = "default_stream")]
+    pub stream: bool,
+}
+
+fn default_stream() -> bool {
+    true
+}
+
+impl ChatRequest {
+    pub fn new(model: impl Into<String>, messages: Vec<Message>) -> Self {
+        Self {
+            model: model.into(),
+            messages,
+            options: None,
+            stream: true,
+        }
+    }
+    
+    pub fn with_temperature(mut self, temperature: f64) -> Self {
+        let mut options = self.options.unwrap_or_default();
+        options.insert("temperature".to_string(), serde_json::json!(temperature));
+        self.options = Some(options);
+        self
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatResponse {
+    pub model: String,
+    
+    #[serde(default)]
+    pub created_at: String,
+    
+    pub message: Message,
+    
+    #[serde(default)]
+    pub done: bool,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub done_reason: Option<String>,
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_message_constructors() {
+        let sys = Message::system("test");
+        assert_eq!(sys.role, "system");
+        assert_eq!(sys.content, "test");
+        
+        let user = Message::user("hello");
+        assert_eq!(user.role, "user");
+    }
+    
+    #[test]
+    fn test_chat_request_builder() {
+        let req = ChatRequest::new("llama2", vec![Message::user("test")])
+            .with_temperature(0.7);
+        
+        assert_eq!(req.model, "llama2");
+        assert!(req.options.is_some());
+    }
+}
