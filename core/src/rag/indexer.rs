@@ -86,17 +86,9 @@ pub fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> 
 }
 
 /// A file that has been collected and read for indexing.
-///
-/// Represents a single file with its path and text content, ready to be
-/// chunked and embedded.
 #[derive(Debug, Clone)]
 pub struct IndexedFile {
-    /// Absolute or relative path to the source file.
     pub path: PathBuf,
-    
-    /// The complete text content of the file.
-    ///
-    /// Binary files and files that cannot be read as UTF-8 are skipped.
     pub content: String,
 }
 
@@ -174,29 +166,7 @@ fn collect_files_recursive<'a>(dir: &'a Path, files: &'a mut Vec<IndexedFile>) -
 
 /// Checks if a file should be indexed based on its extension.
 ///
-/// Returns `true` if the file has one of the supported extensions:
-/// - Rust: `.rs`
-/// - Go: `.go`
-/// - Python: `.py`
-/// - JavaScript/TypeScript: `.js`, `.ts`, `.tsx`, `.jsx`
-/// - Documentation: `.md`, `.txt`
-///
-/// Files without extensions or with unsupported extensions return `false`.
-///
-/// # Arguments
-///
-/// * `path` - Path to check
-///
-/// # Example
-///
-/// ```
-/// # use std::path::Path;
-/// # use core::rag::indexer::is_indexable;
-/// assert!(is_indexable(Path::new("main.rs")));
-/// assert!(is_indexable(Path::new("README.md")));
-/// assert!(!is_indexable(Path::new("binary.exe")));
-/// assert!(!is_indexable(Path::new("no_extension")));
-/// ```
+/// Supported extensions: `.rs`, `.go`, `.py`, `.js`, `.ts`, `.tsx`, `.jsx`, `.md`, `.txt`
 fn is_indexable(path: &Path) -> bool {
     if let Some(ext) = path.extension() {
         matches!(

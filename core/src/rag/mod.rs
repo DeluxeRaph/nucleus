@@ -117,26 +117,6 @@ pub struct Manager {
 
 impl Manager {
     /// Creates a new RAG manager with the given configuration.
-    ///
-    /// Initializes all components: embedder, vector store, and configuration.
-    /// The knowledge base starts empty.
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - Application configuration including RAG settings
-    /// * `ollama_client` - Ollama client for embedding generation
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use core::{config::Config, ollama::Client, rag::Manager};
-    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let config = Config::load_default()?;
-    /// let client = Client::new("http://localhost:11434");
-    /// let rag = Manager::new(&config, client);
-    /// # Ok(())
-    /// # }
-    /// ```
     pub fn new(config: &Config, ollama_client: Client) -> Self {
         let embedder = Embedder::new(ollama_client, &config.rag.embedding_model);
         let store = VectorStore::new();
@@ -326,51 +306,13 @@ impl Manager {
     
     /// Returns the total number of documents (chunks) in the knowledge base.
     ///
-    /// Each indexed file is split into multiple chunks, so the count represents
-    /// the number of chunks, not the number of original files.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use core::{config::Config, ollama::Client, rag::Manager};
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let config = Config::load_default()?;
-    /// # let client = Client::new("http://localhost:11434");
-    /// let rag = Manager::new(&config, client);
-    ///
-    /// println!("Knowledge base has {} chunks", rag.count());
-    ///
-    /// rag.add_knowledge("Some text", "source").await?;
-    /// assert_eq!(rag.count(), 1);
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// Note: each indexed file is split into multiple chunks, so this represents
+    /// chunk count, not file count.
     pub fn count(&self) -> usize {
         self.store.count()
     }
     
     /// Removes all documents from the knowledge base.
-    ///
-    /// After calling this method, the knowledge base will be empty and
-    /// [`count`](Self::count) will return 0.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use core::{config::Config, ollama::Client, rag::Manager};
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let config = Config::load_default()?;
-    /// # let client = Client::new("http://localhost:11434");
-    /// let rag = Manager::new(&config, client);
-    ///
-    /// rag.add_knowledge("Some text", "source").await?;
-    /// assert!(rag.count() > 0);
-    ///
-    /// rag.clear();
-    /// assert_eq!(rag.count(), 0);
-    /// # Ok(())
-    /// # }
-    /// ```
     pub fn clear(&self) {
         self.store.clear();
     }

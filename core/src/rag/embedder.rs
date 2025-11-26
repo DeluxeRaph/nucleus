@@ -50,28 +50,11 @@ pub type Result<T> = std::result::Result<T, EmbedderError>;
 /// ```
 #[derive(Clone)]
 pub struct Embedder {
-    /// Ollama client for API communication.
     client: Client,
-    
-    /// Name of the embedding model to use.
     model: String,
 }
 
 impl Embedder {
-    /// Creates a new embedder with the specified Ollama client and model.
-    ///
-    /// # Arguments
-    ///
-    /// * `client` - Ollama client configured with the API endpoint
-    /// * `model` - Name of the embedding model (e.g., "nomic-embed-text")
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use core::{ollama::Client, rag::embedder::Embedder};
-    /// let client = Client::new("http://localhost:11434");
-    /// let embedder = Embedder::new(client, "nomic-embed-text");
-    /// ```
     pub fn new(client: Client, model: impl Into<String>) -> Self {
         Self {
             client,

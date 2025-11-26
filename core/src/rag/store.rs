@@ -46,22 +46,10 @@ use std::sync::{Arc, RwLock};
 /// ```
 #[derive(Clone)]
 pub struct VectorStore {
-    /// Thread-safe storage for documents.
-    ///
-    /// Uses Arc for cheap cloning and RwLock for concurrent read/write access.
     documents: Arc<RwLock<Vec<Document>>>,
 }
 
 impl VectorStore {
-    /// Creates a new empty vector store.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use core::rag::store::VectorStore;
-    /// let store = VectorStore::new();
-    /// assert_eq!(store.count(), 0);
-    /// ```
     pub fn new() -> Self {
         Self {
             documents: Arc::new(RwLock::new(Vec::new())),
@@ -70,22 +58,8 @@ impl VectorStore {
     
     /// Adds a document to the store.
     ///
-    /// Documents are appended to the internal vector. No deduplication is performed,
-    /// so adding the same document multiple times will create duplicates.
-    ///
-    /// # Arguments
-    ///
-    /// * `document` - The document to add, including its embedding
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use core::rag::{store::VectorStore, types::Document};
-    /// let store = VectorStore::new();
-    /// let doc = Document::new("1", "content", vec![0.1, 0.2]);
-    /// store.add(doc);
-    /// assert_eq!(store.count(), 1);
-    /// ```
+    /// Note: No deduplication is performed, so adding the same document multiple
+    /// times will create duplicates.
     pub fn add(&self, document: Document) {
         let mut docs = self.documents.write().unwrap();
         docs.push(document);
@@ -147,37 +121,10 @@ impl VectorStore {
         results.into_iter().take(top_k).collect()
     }
     
-    /// Returns the total number of documents in the store.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use core::rag::{store::VectorStore, types::Document};
-    /// let store = VectorStore::new();
-    /// assert_eq!(store.count(), 0);
-    ///
-    /// store.add(Document::new("1", "content", vec![0.1]));
-    /// assert_eq!(store.count(), 1);
-    /// ```
     pub fn count(&self) -> usize {
         self.documents.read().unwrap().len()
     }
     
-    /// Removes all documents from the store.
-    ///
-    /// After calling this method, the store will be empty (count returns 0).
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use core::rag::{store::VectorStore, types::Document};
-    /// let store = VectorStore::new();
-    /// store.add(Document::new("1", "content", vec![0.1]));
-    /// assert_eq!(store.count(), 1);
-    ///
-    /// store.clear();
-    /// assert_eq!(store.count(), 0);
-    /// ```
     pub fn clear(&self) {
         self.documents.write().unwrap().clear();
     }
@@ -185,45 +132,8 @@ impl VectorStore {
 
 /// Computes cosine similarity between two vectors.
 ///
-/// Cosine similarity measures the cosine of the angle between two vectors in
-/// a multi-dimensional space. It is particularly useful for comparing document
-/// embeddings as it is independent of vector magnitude.
-///
-/// # Formula
-///
-/// ```text
-/// cosine_similarity(A, B) = (A · B) / (||A|| * ||B||)
-/// ```
-///
-/// Where:
-/// - `A · B` is the dot product of vectors A and B
-/// - `||A||` is the magnitude (L2 norm) of vector A
-/// - `||B||` is the magnitude (L2 norm) of vector B
-///
-/// # Return Value
-///
-/// - `1.0` - Vectors point in the same direction (identical)
-/// - `0.0` - Vectors are orthogonal (unrelated)
-/// - `-1.0` - Vectors point in opposite directions
-/// - Returns `0.0` if vectors have different lengths or zero magnitude
-///
-/// # Arguments
-///
-/// * `a` - First vector
-/// * `b` - Second vector
-///
-/// # Example
-///
-/// ```
-/// # use core::rag::store::cosine_similarity;
-/// let a = vec![1.0, 0.0, 0.0];
-/// let b = vec![1.0, 0.0, 0.0];
-/// assert_eq!(cosine_similarity(&a, &b), 1.0); // Identical
-///
-/// let a = vec![1.0, 0.0];
-/// let b = vec![0.0, 1.0];
-/// assert_eq!(cosine_similarity(&a, &b), 0.0); // Orthogonal
-/// ```
+/// Returns values from -1.0 (opposite) to 1.0 (identical), with 0.0 indicating
+/// orthogonal vectors. Returns 0.0 for mismatched lengths or zero magnitude.
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() {
         return 0.0;
