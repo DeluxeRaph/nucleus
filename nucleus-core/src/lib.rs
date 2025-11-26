@@ -5,7 +5,6 @@
 //! - RAG (Retrieval Augmented Generation)
 //! - Configuration management
 //! - HTTP/Unix socket server
-
 pub mod config;
 pub mod ollama;
 pub mod rag;
