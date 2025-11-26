@@ -1,0 +1,16 @@
+[package]
+name = "nucleus"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+nucleus-core.workspace = true
+nucleus-plugin.workspace = true
+nucleus-std = { workspace = true, optional = true }
+nucleus-dev = { workspace = true, optional = true }
+
+[features]
+default = ["std"]
+std = ["nucleus-std"]
+dev = ["nucleus-dev"]
+full = ["std", "dev"]
