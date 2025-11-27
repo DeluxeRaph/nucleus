@@ -33,7 +33,7 @@ use std::sync::{Arc, RwLock};
 /// # Example
 ///
 /// ```no_run
-/// # use core::rag::{store::VectorStore, types::Document};
+/// # use nucleus_core::rag::{store::VectorStore, types::Document};
 /// let store = VectorStore::new();
 ///
 /// // Add a document
@@ -89,7 +89,7 @@ impl VectorStore {
     /// # Example
     ///
     /// ```no_run
-    /// # use core::rag::{store::VectorStore, types::Document};
+    /// # use nucleus_core::rag::{store::VectorStore, types::Document};
     /// let store = VectorStore::new();
     ///
     /// let doc1 = Document::new("1", "cats", vec![1.0, 0.0, 0.0]);

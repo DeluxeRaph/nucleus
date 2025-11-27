@@ -38,7 +38,7 @@ pub type Result<T> = std::result::Result<T, EmbedderError>;
 /// # Example
 ///
 /// ```no_run
-/// # use core::{ollama::Client, rag::embedder::Embedder};
+/// # use nucleus_core::{ollama::Client, rag::embedder::Embedder};
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let client = Client::new("http://localhost:11434");
 /// let embedder = Embedder::new(client, "nomic-embed-text");
@@ -87,7 +87,7 @@ impl Embedder {
     /// # Example
     ///
     /// ```no_run
-    /// # use core::{ollama::Client, rag::embedder::Embedder};
+    /// # use nucleus_core::{ollama::Client, rag::embedder::Embedder};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = Client::new("http://localhost:11434");
     /// let embedder = Embedder::new(client, "nomic-embed-text");

@@ -21,5 +21,5 @@ mod ollama;
 
 // Public exports
 pub use chat::ChatManager;
-pub use config::Config;
+pub use config::{Config, IndexerConfig};
 pub use server::Server;

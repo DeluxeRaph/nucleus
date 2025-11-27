@@ -65,7 +65,74 @@ pub struct RagConfig {
     pub chunk_size: usize,
     pub chunk_overlap: usize,
     pub top_k: usize,
+    #[serde(default)]
+    pub indexer: IndexerConfig,
 }
+
+/// Configuration for file indexing behavior.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexerConfig {
+    /// File extensions to index (e.g., ["rs", "go", "py"])
+    /// Empty list (default) means index all readable text files
+    #[serde(default)]
+    pub extensions: Vec<String>,
+    
+    /// Patterns to exclude - skips directories/files containing these strings
+    /// Default excludes: build artifacts, version control, package managers, temp files
+    #[serde(default = "default_exclude_patterns")]
+    pub exclude_patterns: Vec<String>,
+}
+
+fn default_exclude_patterns() -> Vec<String> {
+    vec![
+        // Version control
+        ".git".to_string(),
+        ".svn".to_string(),
+        ".hg".to_string(),
+        
+        // Build outputs
+        "target".to_string(),
+        "dist".to_string(),
+        "build".to_string(),
+        "out".to_string(),
+        ".next".to_string(),
+        
+        // Package managers
+        "node_modules".to_string(),
+        "vendor".to_string(),
+        ".pnpm-store".to_string(),
+        
+        // Python
+        "__pycache__".to_string(),
+        ".venv".to_string(),
+        "venv".to_string(),
+        ".pytest_cache".to_string(),
+        "*.egg-info".to_string(),
+        
+        // IDEs
+        ".vscode".to_string(),
+        ".idea".to_string(),
+        
+        // OS
+        ".DS_Store".to_string(),
+        "Thumbs.db".to_string(),
+        
+        // Temp/cache
+        "tmp".to_string(),
+        "temp".to_string(),
+        "cache".to_string(),
+    ]
+}
+
+impl Default for IndexerConfig {
+    fn default() -> Self {
+        Self {
+            extensions: Vec::new(),  // Empty = index all text files
+            exclude_patterns: default_exclude_patterns(),
+        }
+    }
+}
+
 impl Default for RagConfig {
     fn default() -> Self {
         Self {
@@ -73,6 +140,7 @@ impl Default for RagConfig {
             chunk_size: 512,
             chunk_overlap: 50,
             top_k: 5,
+            indexer: IndexerConfig::default(),
         }
     }
 }

@@ -3,8 +3,9 @@
 //! This module provides functionality to:
 //! - Recursively collect code files from directories
 //! - Split large text into overlapping chunks
-//! - Filter files by extension
+//! - Filter files by extension and exclude patterns
 
+use crate::config::IndexerConfig;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use thiserror::Error;
@@ -27,43 +28,14 @@ pub type Result<T> = std::result::Result<T, IndexerError>;
 /// - Overlapping chunks preserve context across boundaries
 /// - Smaller chunks produce more focused embeddings
 ///
-/// # Algorithm
-///
-/// 1. If text fits in chunk_size, return as single chunk
-/// 2. Otherwise, slide a window of size `chunk_size` across the text
-/// 3. Move window by `(chunk_size - overlap)` each step
-/// 4. Last chunk may be smaller than chunk_size
-///
-/// # Arguments
-///
-/// * `text` - The text to split into chunks
-/// * `chunk_size` - Maximum size of each chunk in bytes
-/// * `overlap` - Number of bytes to overlap between consecutive chunks
-///
-/// # Returns
-///
-/// A vector of text chunks. Each chunk (except possibly the last) will be
-/// exactly `chunk_size` bytes. Adjacent chunks will share `overlap` bytes.
-///
-/// # Example
-///
-/// ```
-/// # use core::rag::indexer::chunk_text;
-/// let text = "0123456789ABCDEF";
-/// let chunks = chunk_text(text, 10, 2);
-///
-/// assert_eq!(chunks.len(), 2);
-/// assert_eq!(chunks[0], "0123456789");
-/// assert_eq!(chunks[1], "89ABCDEF");  // "89" is the overlap
-/// ```
+/// This function is internal to the RAG system.
 ///
 /// # Note on Byte vs Character Boundaries
 ///
 /// This function works with byte indices, not character boundaries. For UTF-8
 /// text with multi-byte characters, chunks may not align perfectly with
-/// character boundaries. Consider using a smarter chunking strategy for
-/// production use (e.g., splitting on sentence or paragraph boundaries).
-pub fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> {
+/// character boundaries.
+pub(crate) fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> {
     if text.len() <= chunk_size {
         return vec![text.to_string()];
     }
@@ -94,88 +66,85 @@ pub struct IndexedFile {
 
 /// Recursively collects all indexable files from a directory.
 ///
-/// Walks the directory tree starting from `dir_path`, filtering files by
-/// extension and reading their content. Binary files and unreadable files
-/// are silently skipped.
+/// Walks the directory tree starting from `dir_path`, filtering files based on
+/// the provided configuration. Binary files and unreadable files are silently skipped.
 ///
-/// # Supported Extensions
+/// # Filtering
 ///
-/// Currently indexes files with these extensions:
-/// - Code: `.rs`, `.go`, `.py`, `.js`, `.ts`, `.tsx`, `.jsx`
-/// - Documentation: `.md`, `.txt`
+/// Files are filtered based on:
+/// - **Extensions**: Only files with extensions in `config.extensions` are indexed.
+///   If empty, all readable text files are indexed.
+/// - **Exclude patterns**: Directories or files matching patterns in `config.exclude_patterns`
+///   are skipped (e.g., "node_modules", ".git").
 ///
-/// # Arguments
-///
-/// * `dir_path` - Root directory to start collecting files from
-///
-/// # Returns
-///
-/// A vector of all successfully read indexable files found in the directory
-/// tree. Files are returned in arbitrary order (depends on filesystem).
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - The directory doesn't exist or isn't accessible
-/// - There's a permission error reading the directory structure
-///
-/// Individual file read errors are logged but don't fail the entire operation.
-///
-/// # Example
-///
-/// ```no_run
-/// # use core::rag::indexer::collect_files;
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let files = collect_files("./src").await?;
-/// println!("Found {} indexable files", files.len());
-///
-/// for file in files {
-///     println!("  {}: {} bytes", file.path.display(), file.content.len());
-/// }
-/// # Ok(())
-/// # }
-/// ```
-pub async fn collect_files(dir_path: impl AsRef<Path>) -> Result<Vec<IndexedFile>> {
+/// This function is internal to the RAG system. Use [`Manager::index_directory`](crate::rag::Manager::index_directory)
+/// for public-facing directory indexing.
+pub(crate) async fn collect_files(dir_path: impl AsRef<Path>, config: &IndexerConfig) -> Result<Vec<IndexedFile>> {
     let mut files = Vec::new();
-    collect_files_recursive(dir_path.as_ref(), &mut files).await?;
+    collect_files_recursive(dir_path.as_ref(), &mut files, config).await?;
     Ok(files)
 }
 
-fn collect_files_recursive<'a>(dir: &'a Path, files: &'a mut Vec<IndexedFile>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+fn collect_files_recursive<'a>(
+    dir: &'a Path, 
+    files: &'a mut Vec<IndexedFile>,
+    config: &'a IndexerConfig,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
     Box::pin(async move {
-    let mut entries = fs::read_dir(dir).await?;
-    
-    while let Some(entry) = entries.next_entry().await? {
-        let path = entry.path();
+        let mut entries = fs::read_dir(dir).await?;
         
-        if path.is_dir() {
-            collect_files_recursive(&path, files).await?;
-        } else if is_indexable(&path) {
-            if let Ok(content) = fs::read_to_string(&path).await {
-                files.push(IndexedFile {
-                    path: path.clone(),
-                    content,
-                });
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            
+            if should_exclude(&path, &config.exclude_patterns) {
+                continue;
+            }
+            
+            if path.is_dir() {
+                collect_files_recursive(&path, files, config).await?;
+            } else if is_indexable(&path, &config.extensions) {
+                if let Ok(content) = fs::read_to_string(&path).await {
+                    files.push(IndexedFile {
+                        path: path.clone(),
+                        content,
+                    });
+                }
             }
         }
-    }
-    
-    Ok(())
+        
+        Ok(())
     })
 }
 
 /// Checks if a file should be indexed based on its extension.
 ///
-/// Supported extensions: `.rs`, `.go`, `.py`, `.js`, `.ts`, `.tsx`, `.jsx`, `.md`, `.txt`
-fn is_indexable(path: &Path) -> bool {
-    if let Some(ext) = path.extension() {
-        matches!(
-            ext.to_str(),
-            Some("rs" | "go" | "py" | "js" | "ts" | "tsx" | "jsx" | "md" | "txt")
-        )
-    } else {
-        false
+/// If `extensions` is empty, all files are considered indexable (useful for
+/// catching files without extensions like Dockerfile, Makefile, etc.).
+fn is_indexable(path: &Path, extensions: &[String]) -> bool {
+    if extensions.is_empty() {
+        return true;
     }
+    
+    if let Some(ext) = path.extension() {
+        if let Some(ext_str) = ext.to_str() {
+            return extensions.iter().any(|e| e == ext_str);
+        }
+    }
+    
+    false
+}
+
+/// Checks if a path should be excluded based on exclude patterns.
+///
+/// A path is excluded if any component of its path matches an exclude pattern.
+fn should_exclude(path: &Path, patterns: &[String]) -> bool {
+    path.components().any(|component| {
+        if let Some(name) = component.as_os_str().to_str() {
+            patterns.iter().any(|pattern| name.contains(pattern))
+        } else {
+            false
+        }
+    })
 }
 
 #[cfg(test)]
@@ -202,9 +171,30 @@ mod tests {
     
     #[test]
     fn test_is_indexable() {
-        assert!(is_indexable(Path::new("test.rs")));
-        assert!(is_indexable(Path::new("test.md")));
-        assert!(!is_indexable(Path::new("test.exe")));
-        assert!(!is_indexable(Path::new("test")));
+        let extensions = vec!["rs".to_string(), "md".to_string()];
+        
+        assert!(is_indexable(Path::new("test.rs"), &extensions));
+        assert!(is_indexable(Path::new("test.md"), &extensions));
+        assert!(!is_indexable(Path::new("test.exe"), &extensions));
+        assert!(!is_indexable(Path::new("test"), &extensions));
+    }
+    
+    #[test]
+    fn test_is_indexable_empty_extensions() {
+        let empty_extensions: Vec<String> = vec![];
+        
+        assert!(is_indexable(Path::new("Dockerfile"), &empty_extensions));
+        assert!(is_indexable(Path::new("Makefile"), &empty_extensions));
+        assert!(is_indexable(Path::new("test.rs"), &empty_extensions));
+    }
+    
+    #[test]
+    fn test_should_exclude() {
+        let patterns = vec!["node_modules".to_string(), ".git".to_string(), "target".to_string()];
+        
+        assert!(should_exclude(Path::new("src/node_modules/file.js"), &patterns));
+        assert!(should_exclude(Path::new(".git/config"), &patterns));
+        assert!(should_exclude(Path::new("target/debug/main"), &patterns));
+        assert!(!should_exclude(Path::new("src/main.rs"), &patterns));
     }
 }

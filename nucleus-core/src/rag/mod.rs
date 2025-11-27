@@ -24,7 +24,7 @@
 //! # Usage
 //!
 //! ```no_run
-//! # use core::{config::Config, ollama::Client, rag::Manager};
+//! # use nucleus_core::{Config, ollama::Client, rag::Manager};
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! # let config = Config::load_default()?;
 //! # let ollama_client = Client::new("http://localhost:11434");
@@ -68,7 +68,8 @@ mod types;
 #[allow(unused)]
 pub use types::{Document, SearchResult};
 
-use crate::{config::Config, ollama::Client};
+use crate::config::{Config, IndexerConfig};
+use crate::ollama::Client;
 use embedder::Embedder;
 use indexer::{chunk_text, collect_files};
 use store::VectorStore;
@@ -113,6 +114,7 @@ pub struct Manager {
     chunk_size: usize,
     chunk_overlap: usize,
     top_k: usize,
+    indexer_config: IndexerConfig,
 }
 
 impl Manager {
@@ -127,6 +129,7 @@ impl Manager {
             chunk_size: config.rag.chunk_size,
             chunk_overlap: config.rag.chunk_overlap,
             top_k: config.rag.top_k,
+            indexer_config: config.rag.indexer.clone(),
         }
     }
     
@@ -148,7 +151,7 @@ impl Manager {
     /// # Example
     ///
     /// ```no_run
-    /// # use core::{config::Config, ollama::Client, rag::Manager};
+    /// # use nucleus_core::{Config, ollama::Client, rag::Manager};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let config = Config::load_default()?;
     /// # let client = Client::new("http://localhost:11434");
@@ -201,7 +204,7 @@ impl Manager {
     /// # Example
     ///
     /// ```no_run
-    /// # use core::{config::Config, ollama::Client, rag::Manager};
+    /// # use nucleus_core::{Config, ollama::Client, rag::Manager};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let config = Config::load_default()?;
     /// # let client = Client::new("http://localhost:11434");
@@ -214,7 +217,7 @@ impl Manager {
     /// # }
     /// ```
     pub async fn index_directory(&self, dir_path: &str) -> Result<usize> {
-        let files = collect_files(dir_path).await?;
+        let files = collect_files(dir_path, &self.indexer_config).await?;
         let mut indexed_count = 0;
         
         for file in files {
@@ -269,7 +272,7 @@ impl Manager {
     /// # Example
     ///
     /// ```no_run
-    /// # use core::{config::Config, ollama::Client, rag::Manager};
+    /// # use nucleus_core::{Config, ollama::Client, rag::Manager};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let config = Config::load_default()?;
     /// # let client = Client::new("http://localhost:11434");

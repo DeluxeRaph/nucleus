@@ -10,7 +10,7 @@ use std::collections::HashMap;
 ///
 /// ```no_run
 /// use std::collections::HashMap;
-/// # use core::rag::Document;
+/// # use nucleus_core::rag::Document;
 ///
 /// let embedding = vec![0.1, 0.2, 0.3];
 /// let doc = Document::new("doc_1", "Hello world", embedding)
