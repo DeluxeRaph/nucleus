@@ -6,6 +6,7 @@ members = [
     "nucleus-std",
     "nucleus",
     "nucleus-dev",
+    "nucleus-cli",
     "pty",  # Temporary, will be removed later
 ]
 

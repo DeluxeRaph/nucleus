@@ -27,7 +27,6 @@ impl ChatManager {
         let mut messages = vec![Message::user(user_message)];
 
         let tools = self.build_tools();
-        eprintln!("[DEBUG] Tools available: {}", serde_json::to_string_pretty(&tools).unwrap());
 
         loop {
             let mut request = ChatRequest::new(&self.config.llm.model, messages.clone())
@@ -39,10 +38,16 @@ impl ChatManager {
 
             let mut accumulated_content = String::new();
             let mut current_response: Option<ollama::ChatResponse> = None;
+            let mut tool_calls: Option<Vec<ollama::ToolCall>> = None;
 
             self.ollama
                 .chat(request, |response| {
                     accumulated_content.push_str(&response.message.content);
+                    
+                    if response.message.tool_calls.is_some() {
+                        tool_calls = response.message.tool_calls.clone();
+                    }
+                    
                     current_response = Some(response);
                 })
                 .await
@@ -52,6 +57,7 @@ impl ChatManager {
                 .context("No response from LLM")?;
 
             response.message.content = accumulated_content;
+            response.message.tool_calls = tool_calls;
             let assistant_message = response.message;
 
             if let Some(tool_calls) = &assistant_message.tool_calls {
