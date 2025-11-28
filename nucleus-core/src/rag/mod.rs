@@ -248,3 +248,24 @@ impl Manager {
         self.store.clear();
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use crate::{ollama::Client, Config};
+
+    use super::Manager;
+
+    #[tokio::test]
+    async fn test_indexing() {
+        let config = Config::load_or_default();
+        let client = Client::new(&config.llm.base_url);
+
+        let manager = Manager::new(&config, client);
+        let content_count = manager.count();
+
+        manager.add_knowledge("My name is Andrew Cooksey", "personal_info").await.unwrap();
+
+        assert_eq!(manager.count(), content_count + 1);
+    }
+}

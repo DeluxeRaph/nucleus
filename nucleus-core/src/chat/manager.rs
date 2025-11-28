@@ -47,7 +47,7 @@ use std::sync::Arc;
 /// use std::sync::Arc;
 ///
 /// # async fn example() -> anyhow::Result<()> {
-/// let config = Config::load_default()?;
+/// let config = Config::load_or_default();
 /// let registry = Arc::new(PluginRegistry::new(nucleus_plugin::Permission::READ_ONLY));
 /// let manager = ChatManager::new(config, registry);
 ///
@@ -95,7 +95,7 @@ impl ChatManager {
     /// use std::sync::Arc;
     ///
     /// # fn example() -> anyhow::Result<()> {
-    /// let config = Config::load_default()?;
+    /// let config = Config::load_or_default();
     /// let registry = Arc::new(PluginRegistry::new(Permission::READ_ONLY));
     /// let manager = ChatManager::new(config, registry);
     /// # Ok(())
@@ -140,7 +140,7 @@ impl ChatManager {
     /// # use nucleus_plugin::PluginRegistry;
     /// # use std::sync::Arc;
     /// # async fn example() -> anyhow::Result<()> {
-    /// # let config = Config::load_default()?;
+    /// # let config = Config::load_or_default();
     /// # let registry = Arc::new(PluginRegistry::new(nucleus_plugin::Permission::READ_ONLY));
     /// # let manager = ChatManager::new(config, registry);
     /// let response = manager.query("Summarize the README file").await?;
