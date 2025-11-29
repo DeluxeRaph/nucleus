@@ -6,9 +6,11 @@
 //! - Search (text and code search)
 //! - Execution (safe command execution)
 
+mod commands;
 mod files;
+mod search;
 
 pub use files::{ReadFilePlugin, WriteFilePlugin};
+pub use search::SearchPlugin;
 // TODO: Implement ListDirectoryPlugin
-// TODO: Implement search functionality
 // TODO: Implement command execution
