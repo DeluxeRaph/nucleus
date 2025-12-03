@@ -6,8 +6,7 @@
 use super::{types::*, utils::is_local_gguf};
 use async_trait::async_trait;
 use mistralrs::{
-    GgufModelBuilder, IsqType, PagedAttentionMetaBuilder, TextMessageRole, TextMessages,
-    TextModelBuilder,
+    AnyMoeLoader, GgufLoraModelBuilder, GgufModelBuilder, GgufXLoraModelBuilder, IsqType, LoraModelBuilder, Model, PagedAttentionMetaBuilder, TextMessageRole, TextMessages, TextModelBuilder, VisionModelBuilder, XLoraModelBuilder
 };
 use std::path::Path;
 
@@ -19,6 +18,7 @@ use std::path::Path;
 ///
 /// Matches OllamaProvider API for easy swapping.
 pub struct MistralRsProvider {
+    builder: Model,
     model_name: String,
 }
 
@@ -39,31 +39,21 @@ impl MistralRsProvider {
     /// // Local GGUF file
     /// let provider = MistralRsProvider::new("./models/qwen3-0.6b.gguf");
     /// ```
-    pub fn new(model_name: impl Into<String>) -> Self {
-        Self {
+    pub async fn new(model_name: String) -> Result<Self> {
+        let builder = Self::build_model(&model_name).await.map_err(|e| ProviderError::Other(format!("Unable to build model: {:?}", e)))?;
+
+        let instance = Self {
+            builder: builder,
             model_name: model_name.into(),
-        }
+        };
+
+        Ok(instance)
     }
-}
 
-impl Default for MistralRsProvider {
-    fn default() -> Self {
-        // Default to qwen3 0.6B - small, fast, good quality
-        Self::new("Qwen/Qwen3-0.6B-Instruct")
-    }
-}
-
-#[async_trait]
-impl Provider for MistralRsProvider {
-    async fn chat<'a>(
-        &'a self,
-        request: ChatRequest,
-        mut callback: Box<dyn FnMut(ChatResponse) + Send + 'a>,
-    ) -> Result<()> {
-
-        let model = if is_local_gguf(&self.model_name) {
+    async fn build_model(model_name: &str) -> Result<Model> {
+        let model = if is_local_gguf(&model_name) {
             // Extract path and filename to load modal
-            let path = Path::new(&self.model_name);
+            let path = Path::new(&model_name);
             let dir = path.parent()
                 .ok_or_else(|| ProviderError::Other("Invalid GGUF file path".to_string()))?
                 .to_str()
@@ -79,10 +69,10 @@ impl Provider for MistralRsProvider {
                 .map_err(|e| ProviderError::Other(format!("Failed to configure paged attention: {:?}", e)))?
                 .build()
                 .await
-                .map_err(|e| ProviderError::Other(format!("Failed to load local GGUF '{}': {:?}", self.model_name, e)))?
+                .map_err(|e| ProviderError::Other(format!("Failed to load local GGUF '{}': {:?}", model_name, e)))?
         } else {
             // Download from HuggingFace if not cached  
-            TextModelBuilder::new(&self.model_name)
+            TextModelBuilder::new(&model_name)
                 .with_isq(IsqType::Q4K) // 4-bit quantization
                 .with_logging()
                 .with_paged_attn(|| PagedAttentionMetaBuilder::default().build())
@@ -91,9 +81,31 @@ impl Provider for MistralRsProvider {
                 .await
                 .map_err(|e| ProviderError::Other(
                     format!("Failed to load model '{}'. Make sure it exists on HuggingFace or is a valid local .gguf file: {:?}", 
-                        self.model_name, e)
+                        model_name, e)
                 ))?
         };
+
+        Ok(model)
+    }
+
+    
+}
+
+impl Default for MistralRsProvider {
+    fn default() -> Self {
+        // Default to qwen3 0.6B - small, fast, good quality
+        todo!()
+    }
+}
+
+#[async_trait]
+impl Provider for MistralRsProvider {
+    async fn chat<'a>(
+        &'a self,
+        request: ChatRequest,
+        mut callback: Box<dyn FnMut(ChatResponse) + Send + 'a>,
+    ) -> Result<()> {
+
         
         Err(ProviderError::Other(
             format!(
