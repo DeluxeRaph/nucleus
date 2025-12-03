@@ -148,8 +148,8 @@ impl Default for StorageConfig {
 impl Default for LlmConfig {
     fn default() -> Self {
         Self {
-            model: "qwen3:0.6b".to_string(),
-            base_url: "http://localhost:11434".to_string(),
+            model: "MaziyarPanahi/Qwen3-0.6B-GGUF:Qwen3-0.6B.Q4_K_M.gguf".to_string(),  // Pre-quantized GGUF
+            base_url: "http://localhost:11434".to_string(),  // For Ollama provider (if used)
             temperature: 0.6,
             context_length: 32768,
         }

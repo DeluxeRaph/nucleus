@@ -31,19 +31,23 @@ impl MistralRsProvider {
     ///
     /// # Model Resolution
     ///
-    /// - If `model_name` ends with `.gguf`, treats it as a local file path
-    /// - Otherwise, treats it as a HuggingFace model ID (auto-downloads)
+    /// - `"repo:file.gguf"` - HuggingFace GGUF (pre-quantized, fastest)
+    /// - `"/path/file.gguf"` - Local GGUF file
+    /// - `"Repo/Model-ID"` - HuggingFace model (quantizes on load)
     ///
     /// # Examples
     ///
     /// ```no_run
     /// # use nucleus_core::provider::MistralRsProvider;
     /// # async fn example() -> anyhow::Result<()> {
-    /// // HuggingFace model (auto-downloads)
-    /// let provider = MistralRsProvider::new("Qwen/Qwen3-0.6B-Instruct").await?;
+    /// // Pre-quantized GGUF from HuggingFace (recommended, fastest)
+    /// let provider = MistralRsProvider::new("Qwen/Qwen3-0.6B-Instruct-GGUF:qwen3-0_6b-instruct-q4_k_m.gguf").await?;
     ///
     /// // Local GGUF file
     /// let provider = MistralRsProvider::new("./models/qwen3-0.6b.gguf").await?;
+    ///
+    /// // HuggingFace model (slow, quantizes on load)
+    /// let provider = MistralRsProvider::new("Qwen/Qwen3-0.6B-Instruct").await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -58,9 +62,29 @@ impl MistralRsProvider {
     }
 
     async fn build_model(model_name: &str) -> Result<Model> {
+        // Detect model type
         let is_local_gguf = model_name.ends_with(".gguf") && Path::new(model_name).exists();
+        let is_hf_gguf = model_name.contains(':') && model_name.ends_with(".gguf");
         
-        let model = if is_local_gguf {
+        let model = if is_hf_gguf {
+            // Format: "Repo/Model-GGUF:filename.gguf"
+            let parts: Vec<&str> = model_name.split(':').collect();
+            if parts.len() != 2 {
+                return Err(ProviderError::Other(
+                    format!("Invalid GGUF format. Expected 'Repo/Model-GGUF:file.gguf', got '{}'" , model_name)
+                ));
+            }
+            
+            GgufModelBuilder::new(parts[0], vec![parts[1]])
+                .with_logging()
+                .with_paged_attn(|| PagedAttentionMetaBuilder::default().build())
+                .map_err(|e| ProviderError::Other(format!("Failed to configure paged attention: {:?}", e)))?
+                .build()
+                .await
+                .map_err(|e| ProviderError::Other(
+                    format!("Failed to load GGUF '{}' from HuggingFace: {:?}", model_name, e)
+                ))?
+        } else if is_local_gguf {
             // Extract path and filename to load modal
             let path = Path::new(&model_name);
             let dir = path.parent()

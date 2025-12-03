@@ -18,7 +18,7 @@ async fn main() -> anyhow::Result<()> {
     registry.register(Arc::new(WriteFilePlugin::new()));
     let registry = Arc::new(registry);
 
-    let manager = ChatManager::new(config, registry);
+    let manager = ChatManager::new(config, registry).await?;
 
     println!("Question: Create a file called 'hello.txt' with the content 'Hello from nucleus!'\n");
     
