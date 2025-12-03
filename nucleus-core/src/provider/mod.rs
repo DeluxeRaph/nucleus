@@ -3,27 +3,17 @@
 //! This module defines a common interface for different LLM backends
 //! (Ollama, mistral.rs, etc.) to provide chat completions and embeddings.
 
-mod types;
-pub mod ollama;
 pub mod mistralrs;
+pub mod ollama;
+mod types;
+mod utils;
 
 // Re-export common types
 pub use types::{
-    Provider,
-    ProviderError,
-    Result,
-    ChatRequest,
-    ChatResponse,
-    Message,
-    Tool,
-    ToolCall,
-    ToolFunction,
-    ToolCallFunction,
-    EmbedRequest,
-    EmbedResponse,
+    ChatRequest, ChatResponse, EmbedRequest, EmbedResponse, Message, Provider, ProviderError,
+    Result, Tool, ToolCall, ToolCallFunction, ToolFunction,
 };
 
 // Re-export provider implementations
-pub use ollama::OllamaProvider;
 pub use mistralrs::MistralRsProvider;
-
+pub use ollama::OllamaProvider;

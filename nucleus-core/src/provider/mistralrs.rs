@@ -1,18 +1,44 @@
 //! mistral.rs provider implementation.
 //!
 //! This module provides an in-process LLM provider using mistral.rs.
-//! Models are loaded from disk and run locally.
+//! Supports both local GGUF files and automatic HuggingFace downloads.
 
-use super::types::*;
+use super::{types::*, utils::is_local_gguf};
 use async_trait::async_trait;
+use mistralrs::{
+    GgufModelBuilder, IsqType, PagedAttentionMetaBuilder, TextMessageRole, TextMessages,
+    TextModelBuilder,
+};
+use std::path::Path;
 
-
+/// mistral.rs in-process provider.
+///
+/// Automatically detects if model is:
+/// 1. A local GGUF file path (loads directly)
+/// 2. A HuggingFace model ID (downloads if needed)
+///
+/// Matches OllamaProvider API for easy swapping.
 pub struct MistralRsProvider {
     model_name: String,
 }
 
 impl MistralRsProvider {
     /// Creates a new mistral.rs provider.
+    ///
+    /// # Model Resolution
+    ///
+    /// - If `model_name` ends with `.gguf`, treats it as a local file path
+    /// - Otherwise, treats it as a HuggingFace model ID (auto-downloads)
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // HuggingFace model (auto-downloads)
+    /// let provider = MistralRsProvider::new("Qwen/Qwen3-0.6B-Instruct");
+    ///
+    /// // Local GGUF file
+    /// let provider = MistralRsProvider::new("./models/qwen3-0.6b.gguf");
+    /// ```
     pub fn new(model_name: impl Into<String>) -> Self {
         Self {
             model_name: model_name.into(),
@@ -22,7 +48,8 @@ impl MistralRsProvider {
 
 impl Default for MistralRsProvider {
     fn default() -> Self {
-        Self::new("mistral")
+        // Default to qwen3 0.6B - small, fast, good quality
+        Self::new("Qwen/Qwen3-0.6B-Instruct")
     }
 }
 
@@ -34,7 +61,40 @@ impl Provider for MistralRsProvider {
         mut callback: Box<dyn FnMut(ChatResponse) + Send + 'a>,
     ) -> Result<()> {
 
+        let model = if is_local_gguf(&self.model_name) {
+            // Extract path and filename to load modal
+            let path = Path::new(&self.model_name);
+            let dir = path.parent()
+                .ok_or_else(|| ProviderError::Other("Invalid GGUF file path".to_string()))?
+                .to_str()
+                .ok_or_else(|| ProviderError::Other("Invalid UTF-8 in path".to_string()))?;
+            let filename = path.file_name()
+                .ok_or_else(|| ProviderError::Other("Invalid GGUF filename".to_string()))?
+                .to_str()
+                .ok_or_else(|| ProviderError::Other("Invalid UTF-8 in filename".to_string()))?;
 
+            GgufModelBuilder::new(dir, vec![filename])
+                .with_logging()
+                .with_paged_attn(|| PagedAttentionMetaBuilder::default().build())
+                .map_err(|e| ProviderError::Other(format!("Failed to configure paged attention: {:?}", e)))?
+                .build()
+                .await
+                .map_err(|e| ProviderError::Other(format!("Failed to load local GGUF '{}': {:?}", self.model_name, e)))?
+        } else {
+            // Download from HuggingFace if not cached  
+            TextModelBuilder::new(&self.model_name)
+                .with_isq(IsqType::Q4K) // 4-bit quantization
+                .with_logging()
+                .with_paged_attn(|| PagedAttentionMetaBuilder::default().build())
+                .map_err(|e| ProviderError::Other(format!("Failed to configure paged attention: {:?}", e)))?
+                .build()
+                .await
+                .map_err(|e| ProviderError::Other(
+                    format!("Failed to load model '{}'. Make sure it exists on HuggingFace or is a valid local .gguf file: {:?}", 
+                        self.model_name, e)
+                ))?
+        };
+        
         Err(ProviderError::Other(
             format!(
                 "MistralRsProvider not yet fully implemented.\n\n\
