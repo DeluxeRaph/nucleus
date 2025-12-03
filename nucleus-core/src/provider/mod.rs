@@ -25,5 +25,5 @@ pub use types::{
 
 // Re-export provider implementations
 pub use ollama::OllamaProvider;
-// pub use mistralrs::MistralRsProvider;  // Uncomment when implemented
+pub use mistralrs::MistralRsProvider;
 

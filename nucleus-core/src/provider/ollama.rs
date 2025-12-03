@@ -25,6 +25,12 @@ impl OllamaProvider {
     }
 }
 
+impl Default for OllamaProvider {
+    fn default() -> Self {
+        Self::new("http://localhost:11434")
+    }
+}
+
 #[async_trait]
 impl Provider for OllamaProvider {
     async fn chat<'a>(

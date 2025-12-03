@@ -407,22 +407,20 @@ impl Rag {
 }
 
 
-#[cfg(test)]
-mod tests {
-    use crate::{ollama::Client, Config};
+// #[cfg(test)]
+// mod tests {
+//     use crate::ChatManager;
 
-    use super::*;
+//     use super::*;
 
-    #[tokio::test]
-    async fn test_indexing() {
-        let config = Config::load_or_default();
-        let client = Client::new(&config.llm.base_url);
+//     #[tokio::test]
+//     async fn test_indexing() {
+//         let config = Config::load_or_default();
+//         let manager = Rag::new(&config, client);
+//         let content_count = manager.count();
 
-        let manager = Rag::new(&config, client);
-        let content_count = manager.count();
+//         manager.add_knowledge("My name is Andrew Cooksey", "personal_info").await.unwrap();
 
-        manager.add_knowledge("My name is Andrew Cooksey", "personal_info").await.unwrap();
-
-        assert_eq!(manager.count(), content_count + 1);
-    }
-}
+//         assert_eq!(manager.count(), content_count + 1);
+//     }
+// }

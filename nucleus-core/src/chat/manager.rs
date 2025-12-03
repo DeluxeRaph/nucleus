@@ -28,7 +28,7 @@
 //! preserves tool calls from any chunk to ensure they're not lost.
 
 use crate::config::Config;
-use crate::provider::{OllamaProvider, ChatRequest, ChatResponse, Message, Tool, ToolFunction, ToolCall, Provider};
+use crate::provider::{ChatRequest, ChatResponse, Message, MistralRsProvider, Provider, Tool, ToolCall, ToolFunction};
 use crate::rag::Rag;
 use nucleus_plugin::PluginRegistry;
 use anyhow::{Context, Result};
@@ -79,7 +79,7 @@ pub struct ChatManager {
     /// Registry for available plugins/tools
     registry: Arc<PluginRegistry>,
     /// RAG manager for knowledge base integration (with persistent storage)
-    rag_manager: Rag,
+    rag: Rag,
 }
 
 impl ChatManager {
@@ -108,57 +108,63 @@ impl ChatManager {
     /// # }
     /// ```
     pub fn new(config: Config, registry: Arc<PluginRegistry>) -> Self {
-        let provider: Arc<dyn Provider> = Arc::new(OllamaProvider::new(&config.llm.base_url));
-        let rag_manager = Rag::new(&config, provider.clone());
+        let provider: Arc<dyn Provider> = Arc::new(MistralRsProvider::new(&config.llm.base_url));
+        let rag = Rag::new(&config, provider.clone());
         
         Self {
             config,
             provider,
             registry,
-            rag_manager,
+            rag,
         }
     }
     
-    /// Creates a new chat manager with a custom RAG manager.
-    ///
-    /// This allows full control over RAG configuration, including persistence.
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - Nucleus configuration including LLM settings
-    /// * `registry` - Plugin registry containing available tools
-    /// * `rag_manager` - Custom RAG manager (e.g., with persistence enabled)
     ///
     /// # Examples
     ///
     /// ```no_run
-    /// use nucleus_core::{ChatManager, Config, Client, Rag};
+    /// use nucleus_core::{ChatManager, Config};
+    /// use nucleus_core::provider::MistralRsProvider;
+    /// use nucleus_plugin::{PluginRegistry, Permission};
+    /// use std::sync::Arc;
+    ///
+    /// # fn example() -> anyhow::Result<()> {
+    /// let config = Config::load_or_default();
+    /// let registry = Arc::new(PluginRegistry::new(Permission::READ_ONLY));
+    /// 
+    /// let manager = ChatManager::new(config, registry)
+    ///     .with_provider(Arc::new(MistralRsProvider::new("qwen3:0.6b")));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_provider(mut self, provider: Arc<dyn Provider>) -> Self {
+        self.rag = Rag::new(&self.config, provider.clone());
+        self.provider = provider;
+        self
+    }
+    
+    /// Replace the RAG manager.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use nucleus_core::{ChatManager, Config, Rag};
     /// use nucleus_plugin::{PluginRegistry, Permission};
     /// use std::sync::Arc;
     ///
     /// # async fn example() -> anyhow::Result<()> {
     /// let config = Config::load_or_default();
     /// let registry = Arc::new(PluginRegistry::new(Permission::READ_ONLY));
-    /// let ollama = Client::new(&config.llm.base_url);
     /// 
-    /// // Create RAG with persistence
-    /// let rag = Rag::with_persistence(&config, ollama);
-    /// let manager = ChatManager::with_rag(config, registry, rag);
-    /// 
-    /// // Load previously indexed documents
-    /// manager.load_knowledge_base().await?;
+    /// let custom_rag = Rag::with_persistence(&config, /* provider */);
+    /// let manager = ChatManager::new(config, registry)
+    ///     .with_rag(custom_rag);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn with_rag(config: Config, registry: Arc<PluginRegistry>, rag_manager: Rag) -> Self {
-        let provider: Arc<dyn Provider> = Arc::new(OllamaProvider::new(&config.llm.base_url));
-        
-        Self {
-            config,
-            provider,
-            registry,
-            rag_manager,
-        }
+    pub fn with_rag(mut self, rag: Rag) -> Self {
+        self.rag = rag;
+        self
     }
     
     /// Loads previously indexed documents from persistent storage.
@@ -189,7 +195,7 @@ impl ChatManager {
     /// # }
     /// ```
     pub async fn load_knowledge_base(&self) -> Result<usize> {
-        self.rag_manager.load().await
+        self.rag.load().await
             .context("Failed to load knowledge base")
     }
     
@@ -210,13 +216,13 @@ impl ChatManager {
     ///
     /// Returns an error if indexing fails.
     pub async fn index_directory(&self, dir_path: &str) -> Result<usize> {
-        self.rag_manager.index_directory(dir_path).await
+        self.rag.index_directory(dir_path).await
             .context("Failed to index directory")
     }
     
     /// Returns the number of documents in the knowledge base.
     pub fn knowledge_base_count(&self) -> usize {
-        self.rag_manager.count()
+        self.rag.count()
     }
     
     /// Saves the knowledge base to disk.
@@ -224,7 +230,7 @@ impl ChatManager {
     /// Note: The knowledge base is automatically saved after indexing operations,
     /// but this method can be called to save manually.
     pub async fn save_knowledge_base(&self) -> Result<()> {
-        self.rag_manager.save().await
+        self.rag.save().await
             .context("Failed to save knowledge base")
     }
 
@@ -281,7 +287,7 @@ impl ChatManager {
     /// The loop ensures the LLM can chain multiple tool calls if needed.
     pub async fn query(&self, user_message: &str) -> Result<String> {
         // Retrieve relevant context from knowledge base
-        let context = self.rag_manager.retrieve_context(user_message).await
+        let context = self.rag.retrieve_context(user_message).await
             .context("Failed to retrieve knowledge base context")?;
         
         // Construct user message with context if available

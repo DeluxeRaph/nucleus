@@ -3,6 +3,8 @@ use std::fs;
 use std::path::Path;
 use thiserror::Error;
 
+use crate::Provider;
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("Failed to read config file: {0}")]
@@ -14,6 +16,9 @@ pub enum ConfigError {
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
 
+/// Configuration for the entire chat/agent
+///
+/// This includes the LLM model itself, as well as the features and customization you want it have
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub llm: LlmConfig,
@@ -76,7 +81,7 @@ pub struct IndexerConfig {
     /// Empty list (default) means index all readable text files
     #[serde(default)]
     pub extensions: Vec<String>,
-    
+
     /// Patterns to exclude - skips directories/files containing these strings
     /// Default excludes: build artifacts, version control, package managers, temp files
     #[serde(default = "default_exclude_patterns")]
@@ -90,7 +95,7 @@ fn default_exclude_patterns() -> Vec<String> {
 impl Default for IndexerConfig {
     fn default() -> Self {
         Self {
-            extensions: Vec::new(),  // Empty = index all text files
+            extensions: Vec::new(), // Empty = index all text files
             exclude_patterns: default_exclude_patterns(),
         }
     }
@@ -155,7 +160,9 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             llm: LlmConfig::default(),
-            system_prompt: "You are a helpful AI assistant specializing in programming and development tasks.".to_string(),
+            system_prompt:
+                "You are a helpful AI assistant specializing in programming and development tasks."
+                    .to_string(),
             rag: RagConfig::default(),
             storage: StorageConfig::default(),
             personalization: PersonalizationConfig::default(),
