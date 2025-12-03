@@ -8,7 +8,7 @@ use crate::Config;
 use super::types::*;
 use async_trait::async_trait;
 use mistralrs::{
-    CalledFunction, Function, GgufModelBuilder, IsqType, Model, RequestBuilder, TextMessageRole, TextMessages, TextModelBuilder, Tool as MistralTool, ToolCallback, ToolChoice, ToolType
+    Response, CalledFunction, Function, GgufModelBuilder, IsqType, Model, RequestBuilder, TextMessageRole, TextMessages, TextModelBuilder, Tool as MistralTool, ToolCallback, ToolChoice, ToolType
 };
 use nucleus_plugin::{Plugin, PluginRegistry};
 use tracing::{debug, info, warn};
@@ -83,17 +83,19 @@ impl MistralRsProvider {
                 ));
             }
             
-            // Note: PagedAttention is intentionally omitted here.
-            // .with_paged_attn() can cause indefinite hangs on macOS with Metal/GPU
-            // due to initialization issues in mistral.rs (as of Dec 2024).
-            // The library will automatically disable it when needed anyway.
-            GgufModelBuilder::new(parts[0], vec![parts[1]])
-                .with_logging()
-                .build()
+            let mut builder = GgufModelBuilder::new(parts[0], vec![parts[1]])
+               .with_logging();
+
+            for plugin in registry.all().into_iter() {
+                builder = builder.with_tool_callback(plugin.name(), plugin_to_callback(plugin));
+            }
+
+            builder.build()
                 .await
                 .map_err(|e| ProviderError::Other(
                     format!("Failed to load GGUF '{}' from HuggingFace: {:?}", model_name, e)
                 ))?
+            
         } else if is_local_gguf {
             // Extract path and filename to load modal
             let path = Path::new(&model_name);
@@ -232,52 +234,89 @@ impl Provider for MistralRsProvider {
             builder = builder.set_tools(mistral_tools).set_tool_choice(ToolChoice::Auto);
         }
 
-        // Send request and get response with timeout to prevent hangs
-        debug!("Sending chat request to mistral.rs");
+        // Stream request with timeout to prevent hangs
+        debug!("Starting streaming chat request to mistral.rs");
         let timeout_duration = std::time::Duration::from_secs(60);
-        let response = tokio::time::timeout(
+        let mut stream = tokio::time::timeout(
             timeout_duration,
-            self.model.send_chat_request(builder)
+            self.model.stream_chat_request(builder)
         )
         .await
         .map_err(|_| {
-            warn!(timeout_secs = timeout_duration.as_secs(), "Chat request timed out");
+            warn!(timeout_secs = timeout_duration.as_secs(), "Stream creation timed out");
             ProviderError::Other(
-                format!("Chat request timed out after {} seconds. This may indicate a hang in mistral.rs with tool calling.", 
-                    timeout_duration.as_secs())
+                format!("Stream creation timed out after {} seconds.", timeout_duration.as_secs())
             )
         })?
-        .map_err(|e| ProviderError::Other(format!("Chat request failed: {:?}", e)))?;
-        debug!("Received response from mistral.rs");
-
-        let choice = response.choices.first()
-            .ok_or_else(|| ProviderError::Other("No response choices".to_string()))?;
+        .map_err(|e| ProviderError::Other(format!("Failed to create stream: {:?}", e)))?;
         
-        let content = choice.message.content.as_ref()
-            .map(|s| s.to_string())
-            .unwrap_or_default();
+        debug!("Streaming response from mistral.rs");
+        let mut accumulated_content = String::new();
+        let mut final_tool_calls = None;
+        let mut message_role = String::from("assistant"); // Default, will be updated from stream
 
-        // Convert tool calls back to our format
-        let tool_calls = choice.message.tool_calls.as_ref().map(|tcs| {
-            tcs.iter().map(|tc| super::types::ToolCall {
-                function: super::types::ToolCallFunction {
-                    name: tc.function.name.clone(),
-                    arguments: serde_json::from_str(&tc.function.arguments)
-                        .unwrap_or(serde_json::json!({})),
-                },
-            }).collect()
-        });
+        // Process stream chunks
+        while let Some(chunk) = stream.next().await {
+            match chunk {
+                Response::Chunk(resp) => {
+                    if let Some(choice) = resp.choices.first() {
+                        // Capture role from stream
+                        message_role = choice.delta.role.clone();
+                        
+                        // Stream content incrementally
+                        if let Some(content) = &choice.delta.content {
+                            accumulated_content.push_str(content);
+                            
+                            // Send incremental update to callback
+                            callback(ChatResponse {
+                                model: self.model_name.clone(),
+                                content: content.clone(),
+                                done: false,
+                                message: Message {
+                                    role: message_role.clone(),
+                                    content: accumulated_content.clone(),
+                                    images: None,
+                                    tool_calls: None,
+                                },
+                            });
+                        }
+                        
+                        // Capture tool calls if present
+                        if let Some(tcs) = &choice.delta.tool_calls {
+                            final_tool_calls = Some(
+                                tcs.iter()
+                                    .map(|tc| super::types::ToolCall {
+                                        function: super::types::ToolCallFunction {
+                                            name: tc.function.name.clone(),
+                                            arguments: serde_json::from_str(&tc.function.arguments)
+                                                .unwrap_or(serde_json::json!({})),
+                                        },
+                                    })
+                                    .collect(),
+                            );
+                        }
+                    }
+                }
+                Response::Done(_) => {
+                    debug!("Stream complete");
+                    break;
+                }
+                _ => {
+                    debug!("Received other response type in stream");
+                }
+            }
+        }
 
-        // Send complete response through callback
+        // Send final done=true message with captured role
         callback(ChatResponse {
             model: self.model_name.clone(),
-            content: content.clone(),
+            content: accumulated_content.clone(),
             done: true,
             message: Message {
-                role: "assistant".to_string(),
-                content,
+                role: message_role,
+                content: accumulated_content,
                 images: None,
-                tool_calls,
+                tool_calls: final_tool_calls,
             },
         });
 

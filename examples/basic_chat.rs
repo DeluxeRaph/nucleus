@@ -1,3 +1,4 @@
+use std::io::{self, Write};
 use std::sync::Arc;
 
 use nucleus::{ChatManager, Config};
@@ -8,18 +9,30 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("nucleus_core=debug".parse().unwrap())
+                .add_directive("nucleus_core=info".parse().unwrap())
         )
         .init();
 
     let config = Config::load_or_default();
-    let registry = PluginRegistry::new(Permission::NONE);
-    let manager = ChatManager::new(config, Arc::new(registry)).await.unwrap();
+    let registry = Arc::new(PluginRegistry::new(Permission::NONE));
+    let manager = ChatManager::new(config, registry)
+        .await
+        .expect("Failed to create chat manager");
 
-    let message = "Hi!".to_string();
-    println!("Message: {}", message);
+    let message = "Write me a short poem about Rust programming";
+    println!("User: {}", message);
+    println!("\nAssistant: ");
+    io::stdout().flush().unwrap();
 
-    let response = manager.query(&message).await;
+    // Stream response with live printing
+    let response = manager
+        .query_stream(message, |chunk| {
+            print!("{}", chunk);
+            io::stdout().flush().unwrap();
+        })
+        .await
+        .expect("Failed to get response");
 
-    println!("Response: {}", response.unwrap());
+    println!("\n\n--- Stream complete ---");
+    println!("Total length: {} characters", response.len());
 }

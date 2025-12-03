@@ -287,6 +287,49 @@ impl ChatManager {
     ///
     /// The loop ensures the LLM can chain multiple tool calls if needed.
     pub async fn query(&self, user_message: &str) -> Result<String> {
+        self.query_stream(user_message, |_| {}).await
+    }
+    
+    /// Send a query to the LLM and stream the response through a callback.
+    ///
+    /// This is the streaming version of [`query`](Self::query). It allows you to
+    /// process response chunks as they arrive instead of waiting for the complete
+    /// response.
+    ///
+    /// # Arguments
+    ///
+    /// * `user_message` - The user's question or prompt
+    /// * `on_chunk` - Callback invoked for each chunk of streaming content.
+    ///   Receives the incremental content (not accumulated).
+    ///
+    /// # Returns
+    ///
+    /// The LLM's final complete response after any necessary tool executions.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use nucleus_core::{ChatManager, Config};
+    /// # use nucleus_plugin::PluginRegistry;
+    /// # use std::sync::Arc;
+    /// # use std::io::{self, Write};
+    /// # async fn example() -> anyhow::Result<()> {
+    /// # let config = Config::load_or_default();
+    /// # let registry = Arc::new(PluginRegistry::new(nucleus_plugin::Permission::READ_ONLY));
+    /// # let manager = ChatManager::new(config, registry).await?;
+    /// // Print response as it streams
+    /// let response = manager.query_stream("Tell me a story", |chunk| {
+    ///     print!("{}", chunk);
+    ///     io::stdout().flush().unwrap();
+    /// }).await?;
+    /// println!("\n\nFinal response: {}", response);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn query_stream<F>(&self, user_message: &str, mut on_chunk: F) -> Result<String>
+    where
+        F: FnMut(&str) + Send,
+    {
         // Retrieve relevant context from knowledge base
         let context = self.rag.retrieve_context(user_message).await
             .context("Failed to retrieve knowledge base context")?;
@@ -321,6 +364,12 @@ impl ChatManager {
             self.provider
                 .chat(request, Box::new(|response| {
                     debug!(done = response.done, "Received response chunk from provider");
+                    
+                    // Call user's streaming callback with incremental content
+                    if !response.done && !response.content.is_empty() {
+                        on_chunk(&response.content);
+                    }
+                    
                     accumulated_content.push_str(&response.message.content);
                     
                     // Preserve tool calls from any chunk - they typically arrive early
