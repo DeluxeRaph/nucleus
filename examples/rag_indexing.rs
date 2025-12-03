@@ -28,7 +28,7 @@ async fn main() -> anyhow::Result<()> {
     
     // Create chat manager with empty plugin registry
     let registry = Arc::new(PluginRegistry::new(Permission::READ_WRITE));
-    let manager = ChatManager::new(config.clone(), registry);
+    let manager = ChatManager::new(config.clone(), registry).await?;
     
     // Load previously indexed documents
     println!("Loading knowledge base...");

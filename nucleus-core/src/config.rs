@@ -3,7 +3,6 @@ use std::fs;
 use std::path::Path;
 use thiserror::Error;
 
-use crate::Provider;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {

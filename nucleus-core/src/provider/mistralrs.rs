@@ -6,9 +6,11 @@
 use super::types::*;
 use async_trait::async_trait;
 use mistralrs::{
-    GgufModelBuilder, IsqType, Model, PagedAttentionMetaBuilder, TextMessageRole, TextMessages,
-    TextModelBuilder,
+    Function, GgufModelBuilder, IsqType, Model, RequestBuilder,
+    TextMessageRole, TextMessages, TextModelBuilder, Tool as MistralTool,
+    ToolChoice, ToolType,
 };
+
 use std::path::Path;
 use std::sync::Arc;
 
@@ -77,8 +79,6 @@ impl MistralRsProvider {
             
             GgufModelBuilder::new(parts[0], vec![parts[1]])
                 .with_logging()
-                .with_paged_attn(|| PagedAttentionMetaBuilder::default().build())
-                .map_err(|e| ProviderError::Other(format!("Failed to configure paged attention: {:?}", e)))?
                 .build()
                 .await
                 .map_err(|e| ProviderError::Other(
@@ -98,8 +98,6 @@ impl MistralRsProvider {
 
             GgufModelBuilder::new(dir, vec![filename])
                 .with_logging()
-                .with_paged_attn(|| PagedAttentionMetaBuilder::default().build())
-                .map_err(|e| ProviderError::Other(format!("Failed to configure paged attention: {:?}", e)))?
                 .build()
                 .await
                 .map_err(|e| ProviderError::Other(format!("Failed to load local GGUF '{}': {:?}", model_name, e)))?
@@ -108,8 +106,6 @@ impl MistralRsProvider {
             TextModelBuilder::new(&model_name)
                 .with_isq(IsqType::Q4K) // 4-bit quantization
                 .with_logging()
-                .with_paged_attn(|| PagedAttentionMetaBuilder::default().build())
-                .map_err(|e| ProviderError::Other(format!("Failed to configure paged attention: {:?}", e)))?
                 .build()
                 .await
                 .map_err(|e| ProviderError::Other(
@@ -132,30 +128,66 @@ impl Provider for MistralRsProvider {
         request: ChatRequest,
         mut callback: Box<dyn FnMut(ChatResponse) + Send + 'a>,
     ) -> Result<()> {
-        // Convert messages to mistral.rs format
+        // Build messages using TextMessages builder
         let mut messages = TextMessages::new();
+        
         for msg in &request.messages {
             let role = match msg.role.as_str() {
                 "system" => TextMessageRole::System,
                 "user" => TextMessageRole::User,
                 "assistant" => TextMessageRole::Assistant,
+                "tool" => TextMessageRole::Tool,
                 _ => TextMessageRole::User,
             };
+            
             messages = messages.add_message(role, &msg.content);
+        }
+
+        // Convert to RequestBuilder
+        let mut builder = RequestBuilder::from(messages);
+
+        // Add tools if provided
+        if let Some(tools) = &request.tools {
+            let mistral_tools: Vec<MistralTool> = tools
+                .iter()
+                .map(|t| MistralTool {
+                    tp: ToolType::Function,
+                    function: Function {
+                        name: t.function.name.clone(),
+                        description: Some(t.function.description.clone()),
+                        parameters: Some(
+                            serde_json::from_value(t.function.parameters.clone())
+                                .unwrap_or_default()
+                        ),
+                    },
+                })
+                .collect();
+            builder = builder.set_tools(mistral_tools).set_tool_choice(ToolChoice::Auto);
         }
 
         // Send request and get response
         let response = self.model
-            .send_chat_request(messages)
+            .send_chat_request(builder)
             .await
             .map_err(|e| ProviderError::Other(format!("Chat request failed: {:?}", e)))?;
 
-        // Extract content from first choice
-        let content = response.choices
-            .first()
-            .and_then(|choice| choice.message.content.as_ref())
+        let choice = response.choices.first()
+            .ok_or_else(|| ProviderError::Other("No response choices".to_string()))?;
+        
+        let content = choice.message.content.as_ref()
             .map(|s| s.to_string())
             .unwrap_or_default();
+
+        // Convert tool calls back to our format
+        let tool_calls = choice.message.tool_calls.as_ref().map(|tcs| {
+            tcs.iter().map(|tc| super::types::ToolCall {
+                function: super::types::ToolCallFunction {
+                    name: tc.function.name.clone(),
+                    arguments: serde_json::from_str(&tc.function.arguments)
+                        .unwrap_or(serde_json::json!({})),
+                },
+            }).collect()
+        });
 
         // Send complete response through callback
         callback(ChatResponse {
@@ -166,7 +198,7 @@ impl Provider for MistralRsProvider {
                 role: "assistant".to_string(),
                 content,
                 images: None,
-                tool_calls: None,
+                tool_calls,
             },
         });
 
