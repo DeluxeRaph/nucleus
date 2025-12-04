@@ -45,6 +45,11 @@ anyhow.workspace = true
 async-trait.workspace = true
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 
+# Optimize heavy dependencies even in debug builds
+# This keeps your code fast to compile while making inference fast
+[profile.dev.package."*"]
+opt-level = 2
+
 [workspace.dependencies]
 # Shared dependencies across workspace
 serde = { version = "1.0", features = ["derive"] }

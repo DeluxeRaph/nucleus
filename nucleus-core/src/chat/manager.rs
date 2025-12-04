@@ -370,7 +370,8 @@ impl ChatManager {
                         on_chunk(&response.content);
                     }
                     
-                    accumulated_content.push_str(&response.message.content);
+                    // Accumulate incremental content (response.content), not full message
+                    accumulated_content.push_str(&response.content);
                     
                     // Preserve tool calls from any chunk - they typically arrive early
                     // in the stream and may be absent from the final done=true chunk

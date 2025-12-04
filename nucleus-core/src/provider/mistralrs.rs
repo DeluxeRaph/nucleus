@@ -58,6 +58,13 @@ impl MistralRsProvider {
     /// ```
     pub async fn new(config: Config, registry: Arc<PluginRegistry>) -> Result<Self> {
         let model_name = config.llm.model.clone();
+        
+        // Log which backend we're using
+        #[cfg(feature = "metal")]
+        info!("mistral.rs provider initialized with Metal GPU acceleration");
+        #[cfg(not(feature = "metal"))]
+        warn!("mistral.rs provider running on CPU only - compile with --features metal for GPU acceleration");
+        
         let model = Self::build_model(config.clone(), Arc::clone(&registry)).await?;
 
         Ok(Self {
@@ -84,7 +91,8 @@ impl MistralRsProvider {
             }
             
             let mut builder = GgufModelBuilder::new(parts[0], vec![parts[1]])
-               .with_logging();
+                .with_logging()
+                .with_throughput_logging();
 
             for plugin in registry.all().into_iter() {
                 builder = builder.with_tool_callback(plugin.name(), plugin_to_callback(plugin));
@@ -110,6 +118,7 @@ impl MistralRsProvider {
 
             GgufModelBuilder::new(dir, vec![filename])
                 .with_logging()
+                .with_throughput_logging()
                 .build()
                 .await
                 .map_err(|e| ProviderError::Other(format!("Failed to load local GGUF '{}': {:?}", model_name, e)))?
@@ -117,7 +126,8 @@ impl MistralRsProvider {
             // Download from HuggingFace if not cached  
             let mut builder = TextModelBuilder::new(&model_name)
                 .with_isq(IsqType::Q4K) // 4-bit quantization
-                .with_logging();
+                .with_logging()
+                .with_throughput_logging();
 
             for plugin in registry.all().into_iter() {
                 builder = builder.with_tool_callback(plugin.name(), plugin_to_callback(plugin));
