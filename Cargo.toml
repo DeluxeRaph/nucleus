@@ -12,7 +12,11 @@ members = [
 version = "0.1.0"
 edition = "2021"
 authors = ["Andrew Cooksey"]
-license = "GLPv3"
+license = "MIT"
+repository = "https://github.com/Cooksey99/nucleus"
+homepage = "https://github.com/Cooksey99/nucleus"
+keywords = ["ai", "llm", "developer-tools", "privacy", "local-ai"]
+categories = ["development-tools", "api-bindings"]
 
 [package]
 name = "nucleus"

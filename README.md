@@ -1,5 +1,8 @@
 # Nucleus
 
+[![Documentation](https://docs.rs/nucleus/badge.svg)](https://docs.rs/nucleus)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A privacy-first, modular AI engine for building customizable developer tooling. Nucleus provides the infrastructure to integrate local or self-hosted LLMs with tool-based capabilities, enabling AI assistants that can interact with files, execute commands, and understand codebases - all without sending data to external services.
 
 ## What It Does
@@ -68,17 +71,26 @@ Nucleus is structured as a workspace with clear separation:
 - **nucleus-dev**: Developer-specific plugins (git, LSP integration)
 - **nucleus**: Convenience wrapper with feature flags
 
-## Dependencies
+## Installation
+
+Add Nucleus to your `Cargo.toml`:
 
 ```toml
 [dependencies]
 nucleus = "0.1"  # Includes core + std plugins by default
 ```
 
-For minimal setup:
+For minimal setup without standard plugins:
 ```toml
+[dependencies]
 nucleus = { version = "0.1", default-features = false }
 nucleus-core = "0.1"
+```
+
+For full functionality including dev tools:
+```toml
+[dependencies]
+nucleus = { version = "0.1", features = ["full"] }
 ```
 
 ## Privacy
@@ -96,3 +108,21 @@ Nucleus is infrastructure for building tools like:
 - Interactive documentation systems
 - Project-specific AI helpers
 - Development environment integrations
+
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+Areas where we'd love help:
+- New plugins for the tool system
+- Support for additional LLM backends
+- Documentation and examples
+- Testing and bug fixes
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Status
+
+⚠️ **Note**: Nucleus is under active development. APIs may change as we work toward a stable 1.0 release.
