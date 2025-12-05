@@ -23,7 +23,7 @@ async fn main() -> anyhow::Result<()> {
     registry.register(Arc::new(ReadFilePlugin::new()));
     let registry = Arc::new(registry);
 
-    let manager = ChatManager::new(config, registry);
+    let manager = ChatManager::new(config, registry).await;
 
     println!("Question: What's on line 7 of config.yaml?\n");
     
@@ -32,10 +32,4 @@ async fn main() -> anyhow::Result<()> {
     println!("AI Response:\n{}", response);
     
     Ok(())
-
-
-    let mut registry = Arc::new(PluginRegistry::new(Permission::READ_ONLY));
-    registry.register(Arc::new(ReadFilePlugin::new()));
-
-    let manager = ChatManager::new(config, registry);
 }

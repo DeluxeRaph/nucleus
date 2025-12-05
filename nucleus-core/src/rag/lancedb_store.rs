@@ -141,15 +141,103 @@ impl VectorStore for LanceDbStore {
     }
 
     async fn clear(&self) -> Result<()> {
-        anyhow::bail!("LanceDB clear not yet fully implemented")
+        self.conn
+            .drop_table(self.table.name(), &[])
+            .await
+            .context("Failed to drop table")?;
+        
+        let schema = Self::create_schema(self.vector_size);
+        self.conn
+            .create_empty_table(self.table.name(), schema)
+            .execute()
+            .await
+            .context("Failed to recreate table")?;
+        
+        Ok(())
     }
 
     async fn get_indexed_paths(&self) -> Result<Vec<String>> {
-        anyhow::bail!("LanceDB get_indexed_paths not yet fully implemented")
+        use std::collections::HashSet;
+        
+        let table = self.conn.open_table(self.table.name()).execute().await?;
+        let results = table
+            .query()
+            .execute()
+            .await
+            .context("Failed to query all documents")?;
+        
+        let batches: Vec<RecordBatch> = results.try_collect().await
+            .context("Failed to collect query results")?;
+        
+        let mut unique_paths = HashSet::new();
+        
+        for batch in batches {
+            let source_col = batch.column_by_name("source")
+                .context("Missing 'source' column")?;
+            let source_array = source_col.as_any().downcast_ref::<StringArray>()
+                .context("Failed to cast 'source' to StringArray")?;
+            
+            for i in 0..batch.num_rows() {
+                if !source_array.is_null(i) {
+                    unique_paths.insert(source_array.value(i).to_string());
+                }
+            }
+        }
+        
+        Ok(unique_paths.into_iter().collect())
     }
 
-    async fn remove_by_source(&self, _source_path: &str) -> Result<usize> {
-        anyhow::bail!("LanceDB remove_by_source not yet fully implemented")
+    async fn remove_by_source(&self, source_path: &str) -> Result<usize> {
+        use std::path::Path;
+        
+        let normalized_path = Path::new(source_path)
+            .to_string_lossy()
+            .replace("\\", "/");
+        
+        let table = self.conn.open_table(self.table.name()).execute().await?;
+        let results = table
+            .query()
+            .execute()
+            .await
+            .context("Failed to query all documents")?;
+        
+        let batches: Vec<RecordBatch> = results.try_collect().await
+            .context("Failed to collect query results")?;
+        
+        let mut ids_to_delete = Vec::new();
+        
+        for batch in batches {
+            let id_col = batch.column_by_name("id")
+                .context("Missing 'id' column")?;
+            let source_col = batch.column_by_name("source")
+                .context("Missing 'source' column")?;
+            
+            let id_array = id_col.as_any().downcast_ref::<StringArray>()
+                .context("Failed to cast 'id' to StringArray")?;
+            let source_array = source_col.as_any().downcast_ref::<StringArray>()
+                .context("Failed to cast 'source' to StringArray")?;
+            
+            for i in 0..batch.num_rows() {
+                if !source_array.is_null(i) {
+                    let point_source = source_array.value(i).replace("\\", "/");
+                    if point_source == normalized_path || point_source.starts_with(&format!("{}/", normalized_path)) {
+                        ids_to_delete.push(id_array.value(i).to_string());
+                    }
+                }
+            }
+        }
+        
+        let count = ids_to_delete.len();
+        
+        if !ids_to_delete.is_empty() {
+            let delete_expr = format!("id IN ('{}')", ids_to_delete.join("', '"));
+            table
+                .delete(&delete_expr)
+                .await
+                .context("Failed to delete documents by source")?;
+        }
+        
+        Ok(count)
     }
 }
 
