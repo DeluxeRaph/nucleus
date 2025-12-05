@@ -29,9 +29,9 @@ async fn main() -> anyhow::Result<()> {
     
     // Register plugins the AI can use
     let mut registry = PluginRegistry::new(Permission::READ_ONLY);
-    registry.register(Arc::new(ReadFilePlugin::new()));
+    registry.register(ReadFilePlugin::new());
     
-    let manager = ChatManager::new(config, Arc::new(registry)).await;
+    let manager = ChatManager::new(config, registry).await;
     
     // Ask the AI a question - it will use plugins to answer
     let response = manager.query(
