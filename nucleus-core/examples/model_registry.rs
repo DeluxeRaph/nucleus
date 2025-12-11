@@ -14,16 +14,16 @@ fn main() {
             }
             Model::Embedding(embed) => {
                 println!(
-                    "Embedding: {} - {} dims, {} tokens",
-                    embed.name, embed.embedding_dim, embed.context_length
+                    "Embedding: {} - {} dims, {} tokens{}",
+                    embed.name,
+                    embed.embedding_dim,
+                    embed.context_length,
+                    if embed.supports_custom_dimensions {
+                        " (MRL)"
+                    } else {
+                        ""
+                    }
                 );
-                if embed.supports_custom_dimensions {
-                    println!(
-                        "  Supports custom dimensions: {}-{}",
-                        embed.min_dimension.unwrap_or(0),
-                        embed.max_dimension.unwrap_or(0)
-                    );
-                }
             }
         }
     }
