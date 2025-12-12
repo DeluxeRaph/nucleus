@@ -49,10 +49,10 @@ pub mod utils;
 #[allow(unused)]
 pub use types::{Document, SearchResult};
 
-use crate::config::{Config, IndexerConfig};
+use crate::config::Config;
 use crate::provider::Provider;
 use embedder::Embedder;
-use indexer::{chunk_text, collect_files};
+use indexer::Indexer;
 use store::{create_vector_store, VectorStore};
 use std::path::Path;
 use std::sync::Arc;
@@ -91,15 +91,13 @@ pub type Result<T> = std::result::Result<T, RagError>;
 /// - `rag.chunk_overlap`: Overlap between chunks in bytes
 /// - `storage.top_k`: Number of results to return from searches
 #[derive(Clone)]
-pub struct Rag {
+pub struct RagEngine {
     embedder: Embedder,
     store: Arc<dyn VectorStore>,
-    chunk_size: usize,
-    chunk_overlap: usize,
-    indexer_config: IndexerConfig,
+    indexer: Indexer,
 }
 
-impl Rag {
+impl RagEngine {
     /// Creates a new RAG manager with vector database.
     ///
     /// # Example
@@ -114,18 +112,23 @@ impl Rag {
     /// # }
     /// ```
     pub async fn new(config: &Config, provider: Arc<dyn Provider>) -> Result<Self> {
-        let embedder = Embedder::new(provider, &config.rag.embedding_model);
+        let embedder = Embedder::new(provider, config.rag.embedding_model.clone());
+                
         let store = create_vector_store(
             config.storage.clone(),
-            768,
+            config.rag.embedding_model.embedding_dim.try_into().unwrap_or_default(),
         ).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
+        
+        let mut indexer_config = config.rag.indexer.clone();
+        
+        indexer_config.chunk_size = config.rag.indexer.chunk_size;
+        indexer_config.chunk_overlap = config.rag.indexer.chunk_overlap;
+        let indexer = Indexer::new(indexer_config);
         
         Ok(Self {
             embedder,
             store,
-            chunk_size: config.rag.chunk_size,
-            chunk_overlap: config.rag.chunk_overlap,
-            indexer_config: config.rag.indexer.clone(),
+            indexer,
         })
     }
     /// Adds a single piece of text to the knowledge base.
@@ -151,11 +154,10 @@ impl Rag {
         let document = Document::new(id, content, embedding)
             .with_metadata("source", source);
         
-        self.store.add(document).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
+        self.store.add(vec![document]).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
         Ok(())
     }
     
-    /// Helper to process a batch of chunks and their metadata.
     async fn process_batch(
         &self,
         chunk_batch: &mut Vec<String>,
@@ -170,13 +172,16 @@ impl Rag {
         let embeddings = self.embedder.embed_batch(&chunk_refs).await?;
         info!("Received {} embeddings", embeddings.len());
         
-        for (embedding, (id, content, source, chunk_idx)) in embeddings.into_iter().zip(chunk_metadata.drain(..)) {
-            let document = Document::new(id, content, embedding)
-                .with_metadata("source", source)
-                .with_metadata("chunk", chunk_idx.to_string());
-            
-            self.store.add(document).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
-        }
+        let documents: Vec<Document> = embeddings.into_iter()
+            .zip(chunk_metadata.drain(..))
+            .map(|(embedding, (id, content, source, chunk_idx))| {
+                Document::new(id, content, embedding)
+                    .with_metadata("source", source)
+                    .with_metadata("chunk", chunk_idx.to_string())
+            })
+            .collect();
+        
+        self.store.add(documents).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
         
         info!("Batch processed successfully");
         chunk_batch.clear();
@@ -208,7 +213,7 @@ impl Rag {
     /// - Embedding generation fails for any chunk
     ///
     pub async fn index_directory(&self, dir_path: &Path) -> Result<usize> {
-        let files = collect_files(dir_path, &self.indexer_config).await?;
+        let files = self.indexer.collect_files(dir_path).await?;
         
         use tracing::{info, debug};
         info!("Found {} files to index", files.len());
@@ -229,7 +234,7 @@ impl Rag {
                 continue;
             }
             
-            let chunks = chunk_text(&file.content, self.chunk_size, self.chunk_overlap);
+            let chunks = self.indexer.chunk_text(&file.content);
             
             if chunks.is_empty() {
                 eprintln!("WARNING: No chunks created for file: {}", file.path.display());
@@ -329,7 +334,7 @@ impl Rag {
         let content = fs::read_to_string(file_path).await
             .map_err(|e| RagError::Indexer(indexer::IndexerError::Io(e)))?;
         
-        let chunks = chunk_text(&content, self.chunk_size, self.chunk_overlap);
+        let chunks = self.indexer.chunk_text(&content);
         let chunk_count = chunks.len();
         
         for (i, chunk) in chunks.into_iter().enumerate() {
@@ -340,7 +345,7 @@ impl Rag {
                 .with_metadata("source", file_path)
                 .with_metadata("chunk", i.to_string());
             
-            self.store.add(document).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
+            self.store.add(vec![document]).await.map_err(|e| RagError::Retrieval(e.to_string()))?;
         }
         
         println!("✓ Indexed: {} ({} chunks)", file_path, chunk_count);

@@ -21,6 +21,40 @@ pub enum IndexerError {
 /// Result type for indexing operations.
 pub type Result<T> = std::result::Result<T, IndexerError>;
 
+/// Manages file indexing operations.
+///
+/// The Indexer handles file discovery and filtering based on configuration rules.
+/// It encapsulates the logic for:
+/// - Recursive directory traversal
+/// - File extension filtering
+/// - Exclude pattern matching
+#[derive(Debug, Clone)]
+pub struct Indexer {
+    config: IndexerConfig,
+}
+
+impl Indexer {
+    /// Creates a new Indexer with the given configuration.
+    pub fn new(config: IndexerConfig) -> Self {
+        Self { config }
+    }
+
+    /// Collects all indexable files from the specified directory.
+    ///
+    /// Walks the directory tree recursively, applying extension and exclude filters.
+    pub async fn collect_files(&self, dir_path: impl AsRef<Path>) -> Result<Vec<IndexedFile>> {
+        collect_files(dir_path, &self.config).await
+    }
+
+    /// Chunks text according to the indexer's configuration.
+    ///
+    /// Splits text into overlapping chunks using the configured chunk_size and chunk_overlap.
+    pub fn chunk_text(&self, text: &str) -> Vec<String> {
+        chunk_text(text, self.config.chunk_size, self.config.chunk_overlap)
+    }
+
+}
+
 /// Splits text into overlapping chunks for better context preservation.
 ///
 /// Text chunking is essential for RAG because:
@@ -28,13 +62,11 @@ pub type Result<T> = std::result::Result<T, IndexerError>;
 /// - Overlapping chunks preserve context across boundaries
 /// - Smaller chunks produce more focused embeddings
 ///
-/// This function is internal to the RAG system.
-///
 /// # UTF-8 Safety
 ///
 /// This function respects UTF-8 character boundaries by finding the nearest
 /// valid boundary when chunk sizes would split multi-byte characters.
-pub(crate) fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> {
+pub fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> {
     if text.is_empty() {
         eprintln!("WARNING: chunk_text called with empty text");
         return vec![];

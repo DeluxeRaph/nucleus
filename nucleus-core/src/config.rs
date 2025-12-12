@@ -3,6 +3,8 @@ use std::fs;
 use std::path::Path;
 use thiserror::Error;
 
+use crate::models::EmbeddingModel;
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("Failed to read config file: {0}")]
@@ -19,8 +21,8 @@ pub type Result<T> = std::result::Result<T, ConfigError>;
 /// This includes the LLM model itself, as well as the features and customization you want it have
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    pub llm: LlmConfig,
     pub system_prompt: String,
+    pub llm: LlmConfig,
     pub rag: RagConfig,
     pub storage: StorageConfig,
     pub personalization: PersonalizationConfig,
@@ -67,9 +69,7 @@ pub struct LlmConfig {
 /// This covers embedding settings and text processing behavior (chunking, indexing).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RagConfig {
-    pub embedding_model: String,
-    pub chunk_size: usize,
-    pub chunk_overlap: usize,
+    pub embedding_model: EmbeddingModel,
     #[serde(default)]
     pub indexer: IndexerConfig,
 }
@@ -86,6 +86,12 @@ pub struct IndexerConfig {
     /// Default excludes: build artifacts, version control, package managers, temp files
     #[serde(default = "default_exclude_patterns")]
     pub exclude_patterns: Vec<String>,
+
+    /// Size of text chunks in bytes for splitting documents
+    pub chunk_size: usize,
+
+    /// Overlap between consecutive chunks in bytes
+    pub chunk_overlap: usize,
 }
 
 fn default_exclude_patterns() -> Vec<String> {
@@ -101,6 +107,8 @@ impl Default for IndexerConfig {
         Self {
             extensions: Vec::new(), // Empty = index all text files
             exclude_patterns: default_exclude_patterns(),
+            chunk_size: 512,
+            chunk_overlap: 50,
         }
     }
 }
@@ -125,12 +133,18 @@ impl Default for StorageMode {
 
 impl Default for RagConfig {
     fn default() -> Self {
-        Self {
-            // embedding_model: "models/Qwen3-Embedding-0.6B".to_string(),
-            embedding_model: "Qwen/Qwen3-Embedding-0.6B".to_string(),
-            chunk_size: 512,
+        let embedding_model = EmbeddingModel::default();
+
+        let indexer = IndexerConfig {
+            extensions: Vec::new(),
+            exclude_patterns: default_exclude_patterns(),
+            chunk_size: embedding_model.embedding_dim,
             chunk_overlap: 50,
-            indexer: IndexerConfig::default(),
+        };
+
+        Self {
+            embedding_model,
+            indexer,
         }
     }
 }
@@ -272,8 +286,6 @@ mod tests {
     #[test]
     fn test_rag_config_defaults() {
         let config = RagConfig::default();
-        assert_eq!(config.embedding_model, "models/Qwen3-Embedding-0.6B");
-        assert_eq!(config.chunk_size, 512);
-        assert_eq!(config.chunk_overlap, 50);
+        assert_eq!(config.embedding_model.name, EmbeddingModel::default().name);
     }
 }

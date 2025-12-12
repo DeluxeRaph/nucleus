@@ -14,7 +14,7 @@
 pub mod chat;
 pub mod config;
 pub mod detection;
-pub mod model_downloader;
+pub mod models;
 pub mod patterns;
 pub mod provider;
 pub mod qdrant_helper;
@@ -25,7 +25,7 @@ pub mod server;
 pub use chat::{ChatManager, ChatManagerBuilder};
 pub use config::{Config, IndexerConfig};
 pub use detection::{check_ollama_silent, detect_ollama, DetectionError, OllamaInfo};
-pub use rag::Rag;
+pub use rag::RagEngine;
 pub use server::Server;
 
 // Provider exports

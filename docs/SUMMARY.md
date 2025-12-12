@@ -27,6 +27,7 @@
 - [Integrating with Applications](./guides/integration.md)
 - [Custom Providers](./guides/custom-providers.md)
 - [Configuration Guide](./guides/configuration.md)
+- [Model Registry](./guides/model-registry.md)
 - [RAG & Knowledge Base](./guides/rag-knowledge-base.md)
 
 # Development

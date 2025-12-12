@@ -3,15 +3,16 @@
 //! This module provides an in-process LLM provider using mistral.rs.
 //! Supports both local GGUF files and automatic HuggingFace downloads.
 
+use crate::models::EmbeddingModel;
 use crate::Config;
 
 use super::types::*;
 use anyhow::Context;
 use async_trait::async_trait;
 use mistralrs::{
-    CalledFunction, EmbeddingModelBuilder, Function, GgufModelBuilder, IsqType, Model, PagedAttentionMetaBuilder, RequestBuilder, Response, TextMessageRole, TextMessages, TextModelBuilder, Tool as MistralTool, ToolCallback, ToolChoice, ToolType
+    EmbeddingModelBuilder, Function, GgufModelBuilder, IsqType, Model, PagedAttentionMetaBuilder, RequestBuilder, Response, TextMessageRole, TextMessages, TextModelBuilder, Tool as MistralTool, ToolChoice, ToolType
 };
-use nucleus_plugin::{Plugin, PluginRegistry};
+use nucleus_plugin::PluginRegistry;
 use tracing::{debug, info, warn};
 
 use std::path::Path;
@@ -336,14 +337,18 @@ impl Provider for MistralRsProvider {
         Ok(())
     }
 
-    async fn embed(&self, text: &str, _model: &str) -> Result<Vec<f32>> {
+    async fn embed(&self, text: &str, _model: &EmbeddingModel) -> Result<Vec<f32>> {
         // Lazy load embedding model on first use
         let embedding_model = self.embedding_model
             .get_or_try_init(|| async {
-                let model_path = &self.config.rag.embedding_model;
+                let model_path: String  = match &self.config.rag.embedding_model.path {
+                    Some(path) => path.to_string_lossy().into(),
+                    None => self.config.rag.embedding_model.hf_repo.clone().unwrap_or("Nucleus Registry".to_string())
+                };
+
                 info!("Loading embedding model from: {}", model_path);
                 
-                let model = EmbeddingModelBuilder::new(model_path)
+                let model = EmbeddingModelBuilder::new(model_path.clone())
                     .with_logging()
                     .with_throughput_logging()
                     .with_token_source(mistralrs::TokenSource::None)
